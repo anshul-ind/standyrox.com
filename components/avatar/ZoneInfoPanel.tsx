@@ -18,6 +18,7 @@ export interface ZoneDetail {
   label: string;
   anchor: { x: number; y: number; z: number };
   size: { width: number; height: number };
+  displayOrder: number;
   tier: string;
   basePriceCents: number;
   status: string;
@@ -71,7 +72,7 @@ export default function ZoneInfoPanel({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <h2 className="font-serif text-lg font-semibold text-amber-50">
-            {zone.label}
+            Spot {zone.displayOrder}
           </h2>
           <button
             type="button"
@@ -96,21 +97,31 @@ export default function ZoneInfoPanel({
           {isOccupied && zone.placement ? (
             /* ── Occupied zone ── */
             <div className="flex flex-col gap-4">
+              {/* Unambiguous Occupied Banner */}
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-center">
+                <span className="block font-mono text-xs font-bold uppercase tracking-wider text-red-400">
+                  🔒 Spot Currently Taken
+                </span>
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  This position is actively claimed and unavailable for purchase.
+                </p>
+              </div>
+
               {/* Brand logo */}
               {zone.placement.brandLogoUrl && (
-                <div className="flex justify-center">
+                <div className="flex justify-center my-1">
                   <img
                     src={zone.placement.brandLogoUrl}
                     alt={zone.placement.brandName}
-                    className="h-16 w-16 rounded-lg object-cover border border-white/10"
+                    className="h-16 w-16 rounded-xl object-cover border border-white/10 shadow-lg"
                   />
                 </div>
               )}
 
               {/* Brand info */}
-              <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm bg-zinc-950/40 rounded-lg p-3 border border-white/5">
                 <span className="text-zinc-500">Brand</span>
-                <span className="text-zinc-100 font-medium">
+                <span className="text-zinc-100 font-semibold">
                   {zone.placement.brandName}
                 </span>
 
@@ -121,7 +132,7 @@ export default function ZoneInfoPanel({
                       href={zone.placement.brandUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-amber-400 hover:text-amber-300 underline-offset-2 hover:underline"
+                      className="text-amber-400 hover:text-amber-300 underline-offset-2 hover:underline truncate"
                     >
                       {zone.placement.brandUrl}
                     </a>
@@ -130,22 +141,17 @@ export default function ZoneInfoPanel({
 
                 {zone.placement.endsAt && (
                   <>
-                    <span className="text-zinc-500">Expires</span>
+                    <span className="text-zinc-500">Placement Ends</span>
                     <span className="text-zinc-300 font-mono text-xs">
                       {new Date(zone.placement.endsAt).toLocaleDateString()}
                     </span>
                   </>
                 )}
 
-                <span className="text-zinc-500">Views</span>
+                <span className="text-zinc-500">Impressions</span>
                 <span className="text-zinc-300 font-mono">
                   {zone.viewCount.toLocaleString()}
                 </span>
-              </div>
-
-              {/* Occupied notice */}
-              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200/80">
-                This zone is currently occupied by {zone.placement.brandName}.
               </div>
             </div>
           ) : (
@@ -164,7 +170,7 @@ export default function ZoneInfoPanel({
               {/* Zone details */}
               <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                 <span className="text-zinc-500">Zone</span>
-                <span className="text-zinc-100">{zone.key}</span>
+                <span className="text-zinc-100">Spot {zone.displayOrder}</span>
 
                 <span className="text-zinc-500">Status</span>
                 <span className="text-green-400 capitalize">{zone.status}</span>

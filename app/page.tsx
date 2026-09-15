@@ -6,6 +6,8 @@ import AvatarScene from "@/components/avatar/AvatarScene";
 import type { ZoneData } from "@/components/avatar/AvatarScene";
 import ZoneInfoPanel from "@/components/avatar/ZoneInfoPanel";
 import type { ZoneDetail } from "@/components/avatar/ZoneInfoPanel";
+import ZoneTuner from "@/components/avatar/ZoneTuner";
+import ErrorBoundary from "@/components/ui/error-boundary";
 
 export default function Home() {
   const [zones, setZones] = useState<ZoneData[]>([]);
@@ -14,8 +16,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [selectedZone, setSelectedZone] = useState<ZoneDetail | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // Fetch zones on mount
+  // Fetch zones on mount (and on Retry)
   useEffect(() => {
     let cancelled = false;
 
@@ -31,9 +34,8 @@ export default function Home() {
         setGlbUrl(data.glbUrl);
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load zones");
-        }
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load zones");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -42,7 +44,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   // Keyboard shortcut: Ctrl+D toggles debug labels
   useEffect(() => {
@@ -75,16 +77,20 @@ export default function Home() {
     setSelectedZone(null);
   }, []);
 
+  const handleUpdateZone = useCallback((updated: ZoneData) => {
+    setZones((prev) => prev.map((z) => (z.id === updated.id ? updated : z)));
+  }, []);
+
   return (
-    <main className="flex min-h-screen flex-col bg-zinc-950 text-amber-50">
+    <main className="flex min-h-screen flex-col text-amber-50" style={{ background: '#050c1a' }}>
       {/* ── Header ── */}
-      <header className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+      <header className="flex items-center justify-between border-b border-cyan-900/40 px-6 py-3" style={{ background: 'rgba(5,12,26,0.92)', backdropFilter: 'blur(8px)' }}>
         <div className="flex items-center gap-3">
-          <span className="text-[11px] font-medium tracking-[0.35em] text-amber-200/70 uppercase">
+          <span className="text-[12px] font-bold tracking-[0.32em] uppercase" style={{ color: '#00d4ff', textShadow: '0 0 12px rgba(0,212,255,0.5)' }}>
             Stand Out
           </span>
-          <span className="text-zinc-600">|</span>
-          <span className="font-serif text-sm text-amber-200/50">
+          <span className="text-cyan-900">|</span>
+          <span className="text-sm text-slate-400 tracking-wide">
             Avatar Ad-Zone Marketplace
           </span>
         </div>
@@ -93,12 +99,12 @@ export default function Home() {
           onClick={() => setShowDebug((prev) => !prev)}
           className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${
             showDebug
-              ? "border-amber-400/60 bg-amber-400/10 text-amber-300"
-              : "border-white/10 bg-zinc-900 text-zinc-400 hover:text-zinc-200"
+              ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-300"
+              : "border-cyan-900/50 bg-slate-900/60 text-slate-400 hover:text-slate-200"
           }`}
         >
           Debug: {showDebug ? "ON" : "OFF"}{" "}
-          <span className="text-zinc-600">(Ctrl+D)</span>
+          <span className="text-slate-600">(Ctrl+D)</span>
         </button>
       </header>
 
@@ -116,19 +122,37 @@ export default function Home() {
 
         <div className="absolute inset-0 z-10">
           {loading ? (
-            <div className="flex h-full w-full items-center justify-center font-mono text-sm text-zinc-500">
-              Loading 3D scene…
+            <div className="flex h-full w-full items-center justify-center">
+              <div className="w-full max-w-md space-y-4 px-6">
+                <div className="h-3 w-2/3 animate-pulse rounded-full bg-zinc-800" />
+                <div className="h-3 w-1/2 animate-pulse rounded-full bg-zinc-800" />
+                <div className="mx-auto mt-8 h-40 w-40 animate-pulse rounded-full bg-zinc-800/70" />
+                <div className="mx-auto h-2 w-24 animate-pulse rounded-full bg-zinc-700" />
+              </div>
             </div>
           ) : error ? (
-            <div className="flex h-full w-full items-center justify-center font-mono text-sm text-red-400">
-              {error}
+            <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6 text-center">
+              <p className="font-mono text-sm text-red-400">{error}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoading(true);
+                  setError(null);
+                  setReloadKey((k) => k + 1);
+                }}
+                className="rounded-lg border border-white/10 bg-zinc-800 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-700 transition-colors"
+              >
+                Try again
+              </button>
             </div>
           ) : (
-            <AvatarScene
-              zones={zones}
-              onSelectZone={handleSelectZone}
-              showDebugLabel={showDebug}
-            />
+            <ErrorBoundary fallbackTitle="Failed to load the 3D viewer.">
+              <AvatarScene
+                zones={zones}
+                onSelectZone={handleSelectZone}
+                showDebugLabel={showDebug}
+              />
+            </ErrorBoundary>
           )}
         </div>
       </div>
@@ -136,10 +160,19 @@ export default function Home() {
       {/* ── Zone Info Panel ── */}
       <ZoneInfoPanel zone={selectedZone} onClose={handleClosePanel} />
 
+      {/* ── Zone Tuner Calibration Tool ── */}
+      {showDebug && (
+        <ZoneTuner
+          zones={zones}
+          onUpdateZone={handleUpdateZone}
+          onClose={() => setShowDebug(false)}
+        />
+      )}
+
       {/* ── Footer ── */}
-      <footer className="flex items-center justify-between border-t border-white/10 px-6 py-3 font-mono text-[11px] text-zinc-500">
+      <footer className="flex items-center justify-between border-t border-cyan-900/30 px-6 py-3 font-mono text-[11px]" style={{ background: 'rgba(5,12,26,0.92)', color: '#3a6070' }}>
         <span>Drag to rotate · Scroll to zoom · Click zones to inspect</span>
-        <span className="text-zinc-600">
+        <span style={{ color: '#1e4455' }}>
           {zones.length > 0
             ? `${zones.length} zones · ${glbUrl ?? "—"}`
             : "—"}

@@ -1,4 +1,4 @@
-import { count, eq, and } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { db } from "../lib/db";
 import { avatarModels, adZones, orders, payments, placements } from "../lib/db/schema";
 

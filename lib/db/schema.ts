@@ -80,6 +80,7 @@ export const adZones = pgTable(
     height: real("height").notNull(),
     tier: zoneTierEnum("tier").notNull(),
     basePriceCents: integer("base_price_cents").notNull(),
+    displayOrder: integer("display_order").notNull().default(1),
     status: zoneStatusEnum("status").notNull().default("available"),
     viewCount: integer("view_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -105,6 +106,7 @@ export const orders = pgTable("orders", {
   buyerName: text("buyer_name"),
   brandName: text("brand_name").notNull(),
   brandUrl: text("brand_url"),
+  brandLogoUrl: text("brand_logo_url"),
   amountCents: integer("amount_cents").notNull(),
   currency: text("currency").notNull().default("USD"),
   status: orderStatusEnum("status").notNull().default("pending"),

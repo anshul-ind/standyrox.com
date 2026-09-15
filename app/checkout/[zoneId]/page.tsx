@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getZoneById } from "@/lib/services/zone.service";
 import { formatUSDFromCents } from "@/lib/format";
 import LogoUploadForm from "@/components/checkout/LogoUploadForm";
+import ErrorBoundary from "@/components/ui/error-boundary";
 
 export default async function CheckoutPage({
   params,
@@ -22,19 +24,21 @@ export default async function CheckoutPage({
       <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 text-amber-50 p-6">
         <div className="max-w-md text-center">
           <h1 className="font-serif text-2xl font-bold text-amber-100 mb-4">
-            Zone No Longer Available
+            This spot was just claimed
           </h1>
           <p className="text-zinc-400 mb-6">
-            The &ldquo;{zone.label}&rdquo; zone ({zone.tier}) is currently{" "}
-            <span className="text-amber-400">{zone.status}</span> and cannot be
-            claimed right now.
+            Spot {zone.displayOrder} is no longer available —{" "}
+            {zone.status === "occupied"
+              ? "it was just claimed by someone else."
+              : "it&rsquo;s currently being finalized."}
+            Please pick another spot.
           </p>
-          <a
+          <Link
             href="/"
-            className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:text-white hover:border-white/20 transition-colors"
+            className="inline-flex items-center rounded-lg bg-amber-500 px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-amber-400 transition-colors"
           >
-            ← Back to marketplace
-          </a>
+            ← Pick another spot
+          </Link>
         </div>
       </main>
     );
@@ -44,12 +48,12 @@ export default async function CheckoutPage({
     <main className="flex min-h-screen flex-col bg-zinc-950 text-amber-50">
       {/* Header */}
       <header className="border-b border-white/10 px-6 py-4">
-        <a
+        <Link
           href="/"
           className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
         >
           ← Back to marketplace
-        </a>
+        </Link>
       </header>
 
       <div className="flex flex-1 items-start justify-center p-6 pt-12">
@@ -59,10 +63,10 @@ export default async function CheckoutPage({
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h1 className="font-serif text-2xl font-bold text-amber-100">
-                  {zone.label}
+                  Spot {zone.displayOrder}
                 </h1>
                 <p className="mt-1 text-sm text-zinc-400">
-                  {zone.key} · {zone.tier}
+                  {zone.tier.charAt(0).toUpperCase() + zone.tier.slice(1)} tier
                 </p>
               </div>
               <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
@@ -84,7 +88,9 @@ export default async function CheckoutPage({
           </div>
 
           {/* Upload form */}
-          <LogoUploadForm zoneId={zone.id} />
+          <ErrorBoundary fallbackTitle="Failed to load the checkout form.">
+            <LogoUploadForm zoneId={zone.id} />
+          </ErrorBoundary>
         </div>
       </div>
     </main>

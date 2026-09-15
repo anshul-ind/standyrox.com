@@ -8,6 +8,13 @@
       "when": 1789132800000,
       "tag": "0000_avatar_adzone_v1",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789134000000,
+      "tag": "0001_orders_brand_logo_url",
+      "breakpoints": true
     }
   ]
 }

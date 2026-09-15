@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -111,6 +112,13 @@ export default function LogoUploadForm({ zoneId }: { zoneId: string }) {
         throw new Error(data.error || `Checkout failed (${res.status})`);
       }
 
+      const data = (await res.json()) as { checkoutUrl?: string };
+      if (data.checkoutUrl) {
+        // Redirect the buyer to Dodo's hosted checkout.
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
       setSubmitted(true);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Checkout failed");
@@ -131,12 +139,12 @@ export default function LogoUploadForm({ zoneId }: { zoneId: string }) {
           Your claim for this zone has been recorded. In the next phase, this
           will redirect to Dodo Payments for secure checkout.
         </p>
-        <a
+        <Link
           href="/"
           className="inline-flex items-center rounded-lg border border-white/10 px-4 py-2 text-sm text-zinc-300 hover:text-white hover:border-white/20 transition-colors"
         >
           ← Back to marketplace
-        </a>
+        </Link>
       </div>
     );
   }

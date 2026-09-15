@@ -2,6 +2,7 @@ import { eq, and, asc } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { avatarModels, adZones, placements } from "@/lib/db/schema";
+import { releaseExpiredReservations } from "./reservation.service";
 
 // ─── Response shapes ──────────────────────────────────────────────────────────
 export interface ZonePlacement {
@@ -16,7 +17,10 @@ export interface ZoneListItem {
   key: string;
   label: string;
   anchor: { x: number; y: number; z: number };
+  /** Surface normal for raycasting — determines ray direction for DecalZone */
+  normal: { x: number; y: number; z: number };
   size: { width: number; height: number };
+  displayOrder: number;
   tier: string;
   basePriceCents: number;
   status: string;
@@ -36,6 +40,10 @@ export interface ZonesResponse {
  * placement (left join). Returns null if no active model exists.
  */
 export async function getZones(): Promise<ZonesResponse | null> {
+  // Step 12: expire stale pending reservations before reporting status so a
+  // released zone is available on this read (not a later one).
+  await releaseExpiredReservations();
+
   const [model] = await db
     .select()
     .from(avatarModels)
@@ -55,7 +63,7 @@ export async function getZones(): Promise<ZonesResponse | null> {
       )
     )
     .where(eq(adZones.modelId, model.id))
-    .orderBy(asc(adZones.key));
+    .orderBy(asc(adZones.displayOrder));
 
   return {
     modelId: model.id,
@@ -65,7 +73,15 @@ export async function getZones(): Promise<ZonesResponse | null> {
       key: zone.key,
       label: zone.label,
       anchor: { x: zone.anchorX, y: zone.anchorY, z: zone.anchorZ },
+      // Surface normal from DB — critical for raycasting in DecalZone.
+      // Falls back to Z-forward (0,0,1) if null (legacy rows without normals).
+      normal: {
+        x: zone.normalX ?? 0,
+        y: zone.normalY ?? 0,
+        z: zone.normalZ ?? 1,
+      },
       size: { width: zone.width, height: zone.height },
+      displayOrder: zone.displayOrder,
       tier: zone.tier,
       basePriceCents: zone.basePriceCents,
       status: zone.status,
@@ -89,6 +105,9 @@ export async function getZones(): Promise<ZonesResponse | null> {
 export async function getZoneById(
   id: string
 ): Promise<ZoneListItem | null> {
+  // Step 12: expire stale pending reservations before reporting status.
+  await releaseExpiredReservations();
+
   const [row] = await db
     .select({ zone: adZones, placement: placements })
     .from(adZones)
@@ -110,7 +129,13 @@ export async function getZoneById(
     key: zone.key,
     label: zone.label,
     anchor: { x: zone.anchorX, y: zone.anchorY, z: zone.anchorZ },
+    normal: {
+      x: zone.normalX ?? 0,
+      y: zone.normalY ?? 0,
+      z: zone.normalZ ?? 1,
+    },
     size: { width: zone.width, height: zone.height },
+    displayOrder: zone.displayOrder,
     tier: zone.tier,
     basePriceCents: zone.basePriceCents,
     status: zone.status,
