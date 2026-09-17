@@ -82,9 +82,12 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="flex min-h-screen flex-col text-amber-50" style={{ background: '#050c1a' }}>
+    <main className="flex min-h-screen flex-col text-amber-50 bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: 'url(/bg.jpg)' }}>
+      {/* Overlay to ensure the UI remains readable against the new background */}
+      <div className="absolute inset-0 bg-black/30 pointer-events-none z-0" />
+      
       {/* ── Header ── */}
-      <header className="flex items-center justify-between border-b border-cyan-900/40 px-6 py-3" style={{ background: 'rgba(5,12,26,0.92)', backdropFilter: 'blur(8px)' }}>
+      <header className="relative z-10 flex items-center justify-between border-b border-cyan-900/40 px-6 py-3" style={{ background: 'rgba(5,12,26,0.85)', backdropFilter: 'blur(12px)' }}>
         <div className="flex items-center gap-3">
           <span className="text-[12px] font-bold tracking-[0.32em] uppercase" style={{ color: '#00d4ff', textShadow: '0 0 12px rgba(0,212,255,0.5)' }}>
             Stand Out
@@ -95,6 +98,7 @@ export default function Home() {
           </span>
         </div>
         <button
+          suppressHydrationWarning
           type="button"
           onClick={() => setShowDebug((prev) => !prev)}
           className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${
@@ -110,15 +114,7 @@ export default function Home() {
 
       {/* ── 3D Scene ── */}
       <div className="relative flex-1" style={{ minHeight: "80vh" }}>
-        {/* Background glow */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-0"
-          style={{
-            background:
-              "radial-gradient(ellipse 60% 40% at 50% 50%, rgba(180,140,30,0.05) 0%, transparent 70%)",
-          }}
-        />
+        {/* Background glow removed in favor of main bg image */}
 
         <div className="absolute inset-0 z-10">
           {loading ? (
@@ -170,7 +166,7 @@ export default function Home() {
       )}
 
       {/* ── Footer ── */}
-      <footer className="flex items-center justify-between border-t border-cyan-900/30 px-6 py-3 font-mono text-[11px]" style={{ background: 'rgba(5,12,26,0.92)', color: '#3a6070' }}>
+      <footer className="relative z-10 flex items-center justify-between border-t border-cyan-900/30 px-6 py-3 font-mono text-[11px]" style={{ background: 'rgba(5,12,26,0.85)', backdropFilter: 'blur(12px)', color: '#3a6070' }}>
         <span>Drag to rotate · Scroll to zoom · Click zones to inspect</span>
         <span style={{ color: '#1e4455' }}>
           {zones.length > 0
