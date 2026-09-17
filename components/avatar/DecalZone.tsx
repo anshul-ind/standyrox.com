@@ -247,13 +247,14 @@ export default function DecalZone({
     }
     prevGeoRef.current = newGeo;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setResult({ type: hit ? "decal" : "fallback", geometry: newGeo, hitPoint, hitNormal });
   }, [
     avatarScene,
     groupWorldMatrix,
     zone.id,
     zone.anchor.x, zone.anchor.y, zone.anchor.z,
-    zone.normal?.x, zone.normal?.y, zone.normal?.z,
+    zone.normal, zone.normal?.x, zone.normal?.y, zone.normal?.z,
     zone.size.width, zone.size.height,
     zone.key,
     tier.scale,
@@ -382,6 +383,7 @@ export default function DecalZone({
 
         return (
           <line
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ref={(lineObj: any) => lineObj?.computeLineDistances()}
             geometry={borderGeo}
             position={borderPos}

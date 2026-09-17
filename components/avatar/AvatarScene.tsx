@@ -384,6 +384,7 @@ function FloatingAvatarGroup({
 
 // ─── Scene Camera Controls ───────────────────────────────────────────────────
 function SceneCameraControls() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const controlsRef = useRef<any>(null);
   const [autoRotate, setAutoRotate] = useState(true);
   const { size } = useThree();
@@ -409,7 +410,9 @@ function SceneCameraControls() {
   }, [defaultDist]);
 
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__setAutoRotate = (val: boolean) => setAutoRotate(val);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__setCameraAngle = (preset: "front" | "side" | "back") => {
       setAutoRotate(false);
       if (!controlsRef.current) return;
