@@ -18,6 +18,7 @@ export interface ZoneData {
   label: string;
   anchor: { x: number; y: number; z: number };
   size: { width: number; height: number };
+  displayOrder: number;
   tier: string;
   basePriceCents: number;
   status: string;

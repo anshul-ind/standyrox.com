@@ -81,7 +81,7 @@ function raycastLocalSpace(
       if (!skinned.boundingSphere || skinned.boundingSphere.radius < 2.5) {
         skinned.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 3.5);
       }
-      skinned.boundingBox = null;
+      (skinned as unknown as { boundingBox: THREE.Box3 | null }).boundingBox = null;
 
       const hits = worldRaycaster.intersectObject(mesh, false);
       if (hits.length > 0) {
@@ -223,7 +223,7 @@ export default function DecalZone({
         // DecalGeometry can throw on degenerate meshes — fall back to oriented plane at surface hit point
         console.warn(`[${zone.key}] DecalGeometry threw:`, err, '— using surface-aligned flat plane fallback');
         newGeo = new THREE.PlaneGeometry(w * tier.scale, h * tier.scale);
-        newGeo.applyEuler(orientation);
+        newGeo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(orientation));
         newGeo.translate(hit.point.x, hit.point.y, hit.point.z);
       }
 
@@ -381,21 +381,12 @@ export default function DecalZone({
         const borderOpacity = hovered ? 1.0 : (onDarkClothing ? 0.85 : 0.90);
 
         return (
-          <line
+          <primitive
             ref={(lineObj: any) => lineObj?.computeLineDistances()}
-            geometry={borderGeo}
+            object={new (THREE as any).Line(borderGeo, new THREE.LineDashedMaterial({ color: borderColor, dashSize: 0.014, gapSize: 0.009, depthWrite: false, transparent: true, opacity: borderOpacity }))}
             position={borderPos}
             rotation={borderRot}
-          >
-            <lineDashedMaterial
-              color={borderColor}
-              dashSize={0.014}
-              gapSize={0.009}
-              depthWrite={false}
-              transparent
-              opacity={borderOpacity}
-            />
-          </line>
+          />
         );
       })()}
 
