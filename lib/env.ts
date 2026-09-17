@@ -2,6 +2,7 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 export const env = createEnv({
+  skipValidation: !!process.env.VERCEL || process.env.npm_lifecycle_event === "build",
   server: {
     DATABASE_URL: z.string().url(),
     BLOB_READ_WRITE_TOKEN: z.string().optional(),
