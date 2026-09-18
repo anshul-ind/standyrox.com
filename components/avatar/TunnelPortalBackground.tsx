@@ -143,9 +143,12 @@ function BackgroundParticles({ count = 220 }: { count?: number }) {
   const geometry = useMemo(() => {
     const positions = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      const r = 30 + Math.random() * 55;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 1.6 - 0.8);
+      const seed = ((i * 9301 + 49297) % 233280) / 233280;
+      const seed2 = ((i * 49297 + 9301) % 233280) / 233280;
+      const seed3 = ((i * 12345 + 6789) % 233280) / 233280;
+      const r = 30 + seed * 55;
+      const theta = seed2 * Math.PI * 2;
+      const phi = Math.acos(seed3 * 1.6 - 0.8);
       positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = Math.abs(r * Math.cos(phi)) * 0.6 + 2.0;
       positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta) - 10;

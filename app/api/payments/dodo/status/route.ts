@@ -15,6 +15,7 @@ import { getDodoDiagnostics } from "@/lib/dodo/client";
 export async function GET() {
   const diag = getDodoDiagnostics();
   return NextResponse.json({
+    databaseConfigured: !!(process.env.DATABASE_URL ?? "").trim(),
     keyConfigured: diag.keyConfigured,
     keyClass: diag.keyClass,
     keyLength: diag.keyLength,

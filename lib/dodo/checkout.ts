@@ -45,8 +45,10 @@ export class DodoAuthError extends Error {
 export async function createCheckoutSession(
   input: CreateCheckoutSessionInput
 ): Promise<CheckoutSessionResult> {
-  const productId = (env.DODO_AD_ZONE_PRODUCT_ID ?? "").trim();
-  if (!productId) {
+  let productId: string;
+  try {
+    productId = env.DODO_AD_ZONE_PRODUCT_ID;
+  } catch {
     throw new DodoConfigError(
       "DODO_AD_ZONE_PRODUCT_ID is not configured. Set it in the deployment Production environment and redeploy."
     );

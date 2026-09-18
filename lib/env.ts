@@ -1,20 +1,36 @@
-import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 /**
- * Dodo environment resolution — EXPLICIT ONLY.
+ * Environment Configuration Architecture
  *
- * Production-focused fix: NEVER infer `live_mode` from `NODE_ENV==="production"`.
- * The previous logic auto-promoted every Vercel Production deployment to
- * `live_mode` when DODO_MODE / DODO_PAYMENTS_ENVIRONMENT was unset, so a test
- * key was sent to https://live.dodopayments.com and Dodo returned 401.
- *
- * Now: live_mode is used ONLY when the operator explicitly sets
- *   DODO_PAYMENTS_ENVIRONMENT=live_mode (or live)
- *   or DODO_MODE=live_mode (or live).
- * Everything else (unset, test, test_mode) resolves to test_mode.
+ * Designed for resilient Next.js production serverless deployments:
+ * 1. Independent domain validation: Database, Dodo Payments, and App URL
+ *    are validated on-demand per service rather than monolithic module-level crash.
+ * 2. Unrelated routes (e.g. /api/zones) NEVER fail due to checkout/payment config.
+ * 3. Safe error reporting: logs variable names and status, NEVER secrets/keys.
+ * 4. Backward compatible `env` object with lazy getters and explicit helpers.
  */
-function resolveDodoEnvironment(): "test_mode" | "live_mode" {
+
+// ─── Helpers & Normalizers ───────────────────────────────────────────────────
+
+function normalizeUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  let trimmed = url.trim();
+  if (!trimmed) return undefined;
+  if (!/^https?:\/\//i.test(trimmed)) {
+    trimmed = `https://${trimmed}`;
+  }
+  return trimmed.replace(/\/+$/, "");
+}
+
+/**
+ * Explicit Dodo environment resolution.
+ * Rules:
+ *   - "live" or "live_mode" -> "live_mode"
+ *   - "test", "test_mode", or unset -> "test_mode"
+ * NEVER inferred from NODE_ENV.
+ */
+export function resolveDodoEnvironment(): "test_mode" | "live_mode" {
   const raw = String(
     process.env.DODO_PAYMENTS_ENVIRONMENT ?? process.env.DODO_MODE ?? ""
   )
@@ -24,89 +40,147 @@ function resolveDodoEnvironment(): "test_mode" | "live_mode" {
   return "test_mode";
 }
 
-const resolvedDodoEnv = resolveDodoEnvironment();
+export const resolvedDodoEnv = resolveDodoEnvironment();
 
-/**
- * Skip validation ONLY while `next build` is collecting static routes.
- * The old check (`!!process.env.VERCEL`) was also true at runtime on Vercel,
- * which disabled validation in production and let empty-string defaults for
- * secrets slip through — surfacing later as a Dodo 401 instead of a clear
- * startup error. Runtime (including Vercel Production) MUST validate.
- */
-const isBuildPhase =
-  process.env.npm_lifecycle_event === "build" ||
-  process.env.NEXT_PHASE === "phase-production-build";
+// ─── App URL Resolution ──────────────────────────────────────────────────────
 
-export const env = createEnv({
-  skipValidation: isBuildPhase,
-  server: {
-    DATABASE_URL: z.string().url(),
+export function getAppUrl(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+    process.env.VERCEL_URL ||
+    (process.env.NODE_ENV === "production"
+      ? "https://standyrox.anshulx.me"
+      : "http://localhost:3000");
 
-    BLOB_READ_WRITE_TOKEN: z.string().optional(),
+  const normalized = normalizeUrl(raw);
+  const parsed = z.string().url().safeParse(normalized);
 
-    // Primary name is DODO_PAYMENTS_API_KEY; DODO_API_KEY is accepted as a
-    // legacy alias. Preprocess merges the alias BEFORE the min(1) check so a
-    // missing key FAILS validation at runtime instead of defaulting to "".
-    DODO_PAYMENTS_API_KEY: z.preprocess(
-      (v) =>
-        (v as string | undefined) ??
-        process.env.DODO_PAYMENTS_API_KEY ??
-        process.env.DODO_API_KEY ??
-        undefined,
-      z.string().min(1, "DODO_PAYMENTS_API_KEY (or DODO_API_KEY) is required")
-    ),
+  if (parsed.success) {
+    return parsed.data;
+  }
 
-    DODO_PAYMENTS_WEBHOOK_SECRET: z.preprocess(
-      (v) =>
-        (v as string | undefined) ??
-        process.env.DODO_PAYMENTS_WEBHOOK_SECRET ??
-        process.env.DODO_WEBHOOK_SECRET ??
-        undefined,
-      z
-        .string()
-        .min(
-          1,
-          "DODO_PAYMENTS_WEBHOOK_SECRET (or DODO_WEBHOOK_SECRET) is required"
-        )
-    ),
+  // Final safe fallback
+  return process.env.NODE_ENV === "production"
+    ? "https://standyrox.anshulx.me"
+    : "http://localhost:3000";
+}
 
-    // Accepts test_mode/live_mode plus short aliases test/live and DODO_MODE.
-    // Anything else (including unset) safely defaults to test_mode.
-    DODO_PAYMENTS_ENVIRONMENT: z.preprocess(
-      (v) => {
-        const raw = String(
-          (v as string | undefined) ??
-            process.env.DODO_PAYMENTS_ENVIRONMENT ??
-            process.env.DODO_MODE ??
-            ""
-        )
-          .trim()
-          .toLowerCase();
-        if (raw === "live" || raw === "live_mode") return "live_mode";
-        if (raw === "test" || raw === "test_mode" || raw === "")
-          return "test_mode";
-        return raw; // let the enum reject invalid values with a clear error
-      },
-      z.enum(["test_mode", "live_mode"])
-    ),
+// ─── Database Environment ────────────────────────────────────────────────────
 
-    DODO_AD_ZONE_PRODUCT_ID: z.preprocess(
-      (v) =>
-        (v as string | undefined) ??
-        process.env.DODO_AD_ZONE_PRODUCT_ID ??
-        undefined,
-      z.string().min(1, "DODO_AD_ZONE_PRODUCT_ID is required")
-    ),
+export function getDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) {
+    console.error("[env] DATABASE_URL is missing. Please set DATABASE_URL in Vercel Production environment.");
+    throw new Error("[env] DATABASE_URL is required but not configured");
+  }
+  const parsed = z.string().url().safeParse(url);
+  if (!parsed.success) {
+    console.error("[env] DATABASE_URL is not a valid URL.");
+    throw new Error("[env] DATABASE_URL must be a valid connection URL");
+  }
+  return url;
+}
+
+// ─── Dodo Payments Environment ───────────────────────────────────────────────
+
+export function getDodoApiKey(): string {
+  const key = (
+    process.env.DODO_PAYMENTS_API_KEY ??
+    process.env.DODO_API_KEY ??
+    ""
+  ).trim();
+  return key;
+}
+
+export function getDodoProductId(): string {
+  const id = (process.env.DODO_AD_ZONE_PRODUCT_ID ?? "").trim();
+  return id;
+}
+
+export function getDodoWebhookSecret(): string {
+  const secret = (
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET ??
+    process.env.DODO_WEBHOOK_SECRET ??
+    ""
+  ).trim();
+  return secret;
+}
+
+// ─── Safe Diagnostics (NEVER logs secrets) ───────────────────────────────────
+
+export interface SafeEnvDiagnostics {
+  databaseConfigured: boolean;
+  dodoKeyConfigured: boolean;
+  dodoKeySource: "DODO_PAYMENTS_API_KEY" | "DODO_API_KEY" | "missing";
+  dodoProductConfigured: boolean;
+  dodoWebhookConfigured: boolean;
+  dodoEnvironment: "test_mode" | "live_mode";
+  appUrl: string;
+  blobTokenConfigured: boolean;
+}
+
+export function getSafeEnvDiagnostics(): SafeEnvDiagnostics {
+  const hasDb = !!process.env.DATABASE_URL?.trim();
+  const rawKey = getDodoApiKey();
+  const source: SafeEnvDiagnostics["dodoKeySource"] = process.env.DODO_PAYMENTS_API_KEY
+    ? "DODO_PAYMENTS_API_KEY"
+    : process.env.DODO_API_KEY
+      ? "DODO_API_KEY"
+      : "missing";
+
+  return {
+    databaseConfigured: hasDb,
+    dodoKeyConfigured: rawKey.length > 0,
+    dodoKeySource: source,
+    dodoProductConfigured: getDodoProductId().length > 0,
+    dodoWebhookConfigured: getDodoWebhookSecret().length > 0,
+    dodoEnvironment: resolveDodoEnvironment(),
+    appUrl: getAppUrl(),
+    blobTokenConfigured: !!process.env.BLOB_READ_WRITE_TOKEN?.trim(),
+  };
+}
+
+// ─── Backward-compatible `env` Export ─────────────────────────────────────────
+
+export const env = {
+  get DATABASE_URL(): string {
+    return getDatabaseUrl();
   },
-  client: {
-    NEXT_PUBLIC_APP_URL: z.string().url(),
+
+  get DODO_PAYMENTS_API_KEY(): string {
+    const key = getDodoApiKey();
+    if (!key) {
+      throw new Error("[env] DODO_PAYMENTS_API_KEY (or DODO_API_KEY) is required for payment operations");
+    }
+    return key;
   },
-  experimental__runtimeEnv: {
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+
+  get DODO_PAYMENTS_ENVIRONMENT(): "test_mode" | "live_mode" {
+    return resolveDodoEnvironment();
   },
-});
 
-// Re-export for callers that need the resolved value without re-parsing.
-export { resolvedDodoEnv };
+  get DODO_PAYMENTS_WEBHOOK_SECRET(): string {
+    const secret = getDodoWebhookSecret();
+    if (!secret) {
+      throw new Error("[env] DODO_PAYMENTS_WEBHOOK_SECRET (or DODO_WEBHOOK_SECRET) is required for webhook operations");
+    }
+    return secret;
+  },
 
+  get DODO_AD_ZONE_PRODUCT_ID(): string {
+    const id = getDodoProductId();
+    if (!id) {
+      throw new Error("[env] DODO_AD_ZONE_PRODUCT_ID is required for checkout operations");
+    }
+    return id;
+  },
 
+  get NEXT_PUBLIC_APP_URL(): string {
+    return getAppUrl();
+  },
+
+  get BLOB_READ_WRITE_TOKEN(): string | undefined {
+    return process.env.BLOB_READ_WRITE_TOKEN?.trim() || undefined;
+  },
+};

@@ -1,6 +1,5 @@
 import { Webhook } from "standardwebhooks";
 
-import { env } from "@/lib/env";
 import type { DodoRawEvent } from "./types";
 
 export interface DodoWebhookHeaders {
@@ -11,10 +10,11 @@ export interface DodoWebhookHeaders {
 }
 
 export function getWebhookSecret(): string {
-  const secret =
-    process.env.DODO_PAYMENTS_WEBHOOK_SECRET ||
-    process.env.DODO_WEBHOOK_SECRET ||
-    env.DODO_PAYMENTS_WEBHOOK_SECRET;
+  const secret = (
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET ??
+    process.env.DODO_WEBHOOK_SECRET ??
+    ""
+  ).trim();
   if (!secret) {
     console.error("❌ [DodoWebhook] Missing webhook secret (DODO_PAYMENTS_WEBHOOK_SECRET or DODO_WEBHOOK_SECRET)!");
     throw new Error("[DodoWebhook] Missing Dodo Webhook Secret");
