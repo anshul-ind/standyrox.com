@@ -108,8 +108,17 @@ export default function LogoUploadForm({ zoneId }: { zoneId: string }) {
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Checkout failed (${res.status})`);
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+        };
+        const hint =
+          data.code === "DODO_AUTH_FAILED"
+            ? " (payment provider rejected the server credentials — reservation released)"
+            : data.code === "DODO_NOT_CONFIGURED"
+              ? " (payments not configured on the server — reservation released)"
+              : "";
+        throw new Error(`${data.error || `Checkout failed (${res.status})`}${hint}`);
       }
 
       const data = (await res.json()) as { checkoutUrl?: string };

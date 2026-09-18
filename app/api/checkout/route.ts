@@ -3,10 +3,44 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { adZones } from "@/lib/db/schema";
-import { createCheckoutSession } from "@/lib/dodo/checkout";
+import { DodoConfigError, getDodoDiagnostics } from "@/lib/dodo/client";
+import { createCheckoutSession, DodoAuthError } from "@/lib/dodo/checkout";
 import { createOrder, setOrderExternalPaymentId, updateOrderStatus } from "@/lib/services/order.service";
 import { getZoneById } from "@/lib/services/zone.service";
 import { checkoutRequestSchema } from "@/lib/validations/checkout";
+
+/** Narrow an unknown throw to a safe status/code/message — never leaks secrets. */
+function toCheckoutErrorPayload(err: unknown): {
+  status: number;
+  code: string;
+  message: string;
+} {
+  if (err instanceof DodoAuthError) {
+    return {
+      status: 502,
+      code: err.code,
+      message:
+        "Payment provider authentication failed (Dodo 401). The server's Dodo " +
+        `credentials were rejected in ${err.dodoEnvironment}. ` +
+        "This is a server configuration issue, not your input — " +
+        "the reservation was released, please try again later.",
+    };
+  }
+  if (err instanceof DodoConfigError) {
+    return {
+      status: 503,
+      code: err.code,
+      message:
+        "Payments are temporarily unavailable (server configuration incomplete). " +
+        "The reservation was released, please try again later.",
+    };
+  }
+  return {
+    status: 502,
+    code: "DODO_CHECKOUT_FAILED",
+    message: "Failed to start the payment session. The reservation was released.",
+  };
+}
 
 export async function POST(request: Request) {
   // 1. Parse + validate body
@@ -88,11 +122,20 @@ export async function POST(request: Request) {
       } catch {
         /* best-effort */
       }
+      // Sanitized server diagnostics — boolean/class/environment only, never the key.
+      const diag = getDodoDiagnostics();
+      const payload = toCheckoutErrorPayload(err);
       console.error(
-        "Checkout session creation failed; reservation rolled back:",
-        err
+        `[checkout] Dodo session failed code=${payload.code} ` +
+          `environment=${diag.environment} baseUrl=${diag.baseUrl} ` +
+          `keyConfigured=${diag.keyConfigured} keyClass=${diag.keyClass} ` +
+          `source=${diag.envVarSource} orderId=${order.id} zoneId=${zone.id}:`,
+        err instanceof Error ? err.message : err
       );
-      throw err;
+      return NextResponse.json(
+        { error: payload.message, code: payload.code },
+        { status: payload.status }
+      );
     }
 
     // 8. Stash the Dodo session id on the order
