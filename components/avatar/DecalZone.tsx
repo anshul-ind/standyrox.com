@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
 import { Html } from "@react-three/drei";
@@ -15,6 +16,97 @@ const TIER_COLORS = {
   standard:  { fill: 0x7209b7, border: 0xb5179e, emissive: 0x1a0030, scale: 0.85 },
 } as const;
 type TierKey = keyof typeof TIER_COLORS;
+
+// ─── Pulsing Glow Marker for Empty Ad Zones ──────────────────────────────────
+function PulsingZoneMarker({
+  position,
+  rotation,
+  tierKey,
+  hovered,
+}: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  tierKey: TierKey;
+  hovered: boolean;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const coreMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const glowMatRef = useRef<THREE.MeshBasicMaterial>(null);
+
+  // Animated breathing pulse via useFrame (~1.5s period)
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    const cycle = (t / 1.5) * Math.PI * 2;
+    const pulse = 0.5 + 0.5 * Math.sin(cycle); // 0.0 to 1.0
+
+    if (groupRef.current) {
+      const baseScale = hovered ? 1.3 : 1.0;
+      const s = baseScale * (0.92 + 0.16 * pulse);
+      groupRef.current.scale.set(s, s, s);
+    }
+
+    if (ringMatRef.current) {
+      ringMatRef.current.opacity = hovered ? 0.95 : (0.45 + 0.5 * pulse);
+    }
+    if (coreMatRef.current) {
+      coreMatRef.current.opacity = hovered ? 1.0 : (0.7 + 0.3 * pulse);
+    }
+    if (glowMatRef.current) {
+      glowMatRef.current.opacity = hovered ? 0.45 : (0.15 + 0.28 * pulse);
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={position} rotation={rotation}>
+      {/* Outer soft ambient radial glow disc */}
+      <mesh position={[0, 0, 0.001]}>
+        <circleGeometry args={[0.042, 32]} />
+        <meshBasicMaterial
+          ref={glowMatRef}
+          color="#00d4ff"
+          transparent
+          depthWrite={false}
+          opacity={0.3}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* Vibrant glowing placement ring */}
+      <mesh position={[0, 0, 0.002]}>
+        <ringGeometry args={[0.024, 0.034, 32]} />
+        <meshBasicMaterial
+          ref={ringMatRef}
+          color="#00f0ff"
+          transparent
+          depthWrite={false}
+          opacity={0.85}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* Core emissive beacon dot */}
+      <mesh position={[0, 0, 0.003]}>
+        <circleGeometry args={[0.012, 24]} />
+        <meshBasicMaterial
+          ref={coreMatRef}
+          color="#ffffff"
+          transparent
+          depthWrite={false}
+          opacity={0.95}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* Precision target crosshair lines */}
+      <mesh position={[0, 0, 0.003]}>
+        <planeGeometry args={[0.003, 0.016]} />
+        <meshBasicMaterial color="#00e5ff" transparent opacity={0.8} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, 0, 0.003]}>
+        <planeGeometry args={[0.016, 0.003]} />
+        <meshBasicMaterial color="#00e5ff" transparent opacity={0.8} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
 
 // ─── Internal result type ─────────────────────────────────────────────────────
 interface ZoneGeoResult {
@@ -310,7 +402,14 @@ export default function DecalZone({
   const isFallback = result.type === "fallback";
   const fallbackPos: [number, number, number] = [zone.anchor.x, zone.anchor.y, zone.anchor.z];
   const fallbackRot: [number, number, number] = (() => {
-    if (zone.anchor.z < -0.05 || zone.key === "back_upper") return [0, Math.PI, 0];
+    if (
+      zone.anchor.z < -0.05 ||
+      zone.key.includes("back") ||
+      zone.key.includes("rear") ||
+      zone.key.includes("glute")
+    ) {
+      return [0, Math.PI, 0];
+    }
     if (zone.anchor.x > 0.25)  return [0,  Math.PI * 0.18, 0];
     if (zone.anchor.x < -0.25) return [0, -Math.PI * 0.18, 0];
     return [0, 0, 0];
@@ -365,6 +464,16 @@ export default function DecalZone({
         />
       </mesh>
 
+      {/* Pulsing glow marker beacon at zone center — empty / unclaimed zones only */}
+      {!isOccupied && (
+        <PulsingZoneMarker
+          position={borderPos}
+          rotation={borderRot}
+          tierKey={tierKey}
+          hovered={hovered}
+        />
+      )}
+
       {/* Dashed border outline — for available/unclaimed zones only */}
       {/* Contrast-adaptive: light borders on dark clothing, dark borders on light clothing */}
       {!isOccupied && (() => {
@@ -373,6 +482,8 @@ export default function DecalZone({
           'chest_center', 'back_upper',
           'left_thigh_front', 'right_thigh_front',
           'left_calf', 'right_calf',
+          'left_lower_back', 'right_lower_back',
+          'left_calf_back', 'right_calf_back',
         ];
         const onDarkClothing = darkClothingZones.includes(zone.key);
         const borderColor = hovered

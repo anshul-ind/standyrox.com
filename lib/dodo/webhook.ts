@@ -10,7 +10,17 @@ export interface DodoWebhookHeaders {
   [key: string]: string | string[] | undefined | null;
 }
 
-const webhook = new Webhook(env.DODO_PAYMENTS_WEBHOOK_SECRET);
+export function getWebhookSecret(): string {
+  const secret =
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET ||
+    process.env.DODO_WEBHOOK_SECRET ||
+    env.DODO_PAYMENTS_WEBHOOK_SECRET;
+  if (!secret) {
+    console.error("❌ [DodoWebhook] Missing webhook secret (DODO_PAYMENTS_WEBHOOK_SECRET or DODO_WEBHOOK_SECRET)!");
+    throw new Error("[DodoWebhook] Missing Dodo Webhook Secret");
+  }
+  return secret;
+}
 
 /**
  * Verify a Dodo webhook signature over the exact raw request body.
@@ -25,6 +35,8 @@ export function verifyDodoWebhook(
   rawBody: string,
   headers: DodoWebhookHeaders
 ): DodoRawEvent {
+  const webhook = new Webhook(getWebhookSecret());
+
   const signedHeaders = {
     "webhook-id": headers["webhook-id"] ?? "",
     "webhook-signature": headers["webhook-signature"] ?? "",
