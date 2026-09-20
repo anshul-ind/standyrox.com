@@ -70,6 +70,51 @@ export function extractOrderId(raw: DodoRawEvent): string | null {
 }
 
 /**
+ * Pull spot_id from the event metadata we set at session creation. Used purely
+ * as a cross-check against the order's stored zone; the order row stays the
+ * authoritative source of truth for which spot was purchased.
+ */
+export function extractSpotId(raw: DodoRawEvent): string | null {
+  const data = asRecord(raw.data);
+  const meta = asRecord(data.metadata);
+  const spotId = meta.spot_id ?? data.spot_id;
+  return typeof spotId === "string" && spotId.length > 0 ? spotId : null;
+}
+
+/**
+ * Pull the checkout session id from the event. Used as a fallback to locate the
+ * order when the metadata order_id is somehow absent, by matching the
+ * `external_payment_id` we stored on the order at checkout time.
+ *
+ * Verified shape: a payment.succeeded event carries `data.checkout_session_id`.
+ */
+export function extractCheckoutSessionId(raw: DodoRawEvent): string | null {
+  const data = asRecord(raw.data);
+  const candidates = [data.checkout_session_id, data.session_id];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 0) return c;
+  }
+  return null;
+}
+
+/**
+ * Pull the amount actually charged, in the currency's smallest unit.
+ * Verified shape: `data.total_amount` on a payment event.
+ */
+export function extractTotalAmount(raw: DodoRawEvent): number | null {
+  const data = asRecord(raw.data);
+  const value = data.total_amount ?? data.amount;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Pull the payment currency (ISO 4217), if present. */
+export function extractCurrency(raw: DodoRawEvent): string | null {
+  const data = asRecord(raw.data);
+  const value = data.currency;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
  * Pull the provider payment id used for idempotency. Tries several realistic
  * field names and logs what was found so the real shape can be confirmed.
  */

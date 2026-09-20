@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  getSpotProductConfig,
+  getSpotProductEnvVars,
+  SPOT_PRODUCTS,
+} from "./spot-products";
+
 /**
  * Environment Configuration Architecture
  *
@@ -93,9 +99,49 @@ export function getDodoApiKey(): string {
   return key;
 }
 
+/**
+ * Legacy single-product accessor. Kept only for backward compatibility and
+ * diagnostics; checkout no longer uses it (each spot resolves its own product).
+ */
 export function getDodoProductId(): string {
   const id = (process.env.DODO_AD_ZONE_PRODUCT_ID ?? "").trim();
   return id;
+}
+
+/**
+ * Resolve the Dodo product ID for a spot by its `ad_zones.key`.
+ * Returns null when the key is not a purchasable spot or its env var is unset.
+ * NEVER returns or logs the value anywhere but the server checkout call.
+ */
+export function getDodoProductIdForSpot(zoneKey: string): string | null {
+  const config = getSpotProductConfig(zoneKey);
+  if (!config) return null;
+  const id = (process.env[config.envVar] ?? "").trim();
+  return id.length > 0 ? id : null;
+}
+
+/** Env var name a spot requires (for clear, secret-free error messages). */
+export function getSpotProductEnvVar(zoneKey: string): string | null {
+  return getSpotProductConfig(zoneKey)?.envVar ?? null;
+}
+
+/** Number of spots whose Dodo product ID is configured. */
+export function getConfiguredSpotProductCount(): number {
+  return getSpotProductEnvVars().filter(
+    (name) => (process.env[name] ?? "").trim().length > 0
+  ).length;
+}
+
+/** Total number of purchasable spots defined in the mapping. */
+export function getTotalSpotProductCount(): number {
+  return Object.keys(SPOT_PRODUCTS).length;
+}
+
+/** Env var names that still need values (safe to surface — names only). */
+export function getMissingSpotProductEnvVars(): string[] {
+  return getSpotProductEnvVars().filter(
+    (name) => (process.env[name] ?? "").trim().length === 0
+  );
 }
 
 export function getDodoWebhookSecret(): string {

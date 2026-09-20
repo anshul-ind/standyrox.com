@@ -98,8 +98,10 @@ export default function LogoUploadForm({ zoneId }: { zoneId: string }) {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // SECURITY: send only the spot identifier plus order details. Price and
+        // Dodo product ID are resolved server-side — never sent from here.
         body: JSON.stringify({
-          zoneId,
+          spotId: zoneId,
           brandName: brandName.trim(),
           brandUrl: brandUrl.trim() || undefined,
           buyerEmail: buyerEmail.trim(),
@@ -145,8 +147,8 @@ export default function LogoUploadForm({ zoneId }: { zoneId: string }) {
           Claim Submitted
         </h2>
         <p className="text-sm text-zinc-400 mb-4">
-          Your claim for this zone has been recorded. In the next phase, this
-          will redirect to Dodo Payments for secure checkout.
+          Your spot has been reserved. Redirecting to Dodo Payments for secure
+          checkout…
         </p>
         <Link
           href="/"
@@ -271,7 +273,8 @@ export default function LogoUploadForm({ zoneId }: { zoneId: string }) {
       </Button>
 
       <p className="text-center text-xs text-zinc-600">
-        Payment integration coming in the next phase. This is a stub submission.
+        You&rsquo;ll be redirected to Dodo Payments (test mode) to complete the
+        purchase securely.
       </p>
     </form>
   );

@@ -4,10 +4,10 @@ import { NextResponse } from "next/server";
 import { PAYMENT_PROVIDER_DODO } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { adZones } from "@/lib/db/schema";
-import { extractEventType, extractOrderId, extractPaymentId, type DodoRawEvent } from "@/lib/dodo/types";
+import { extractCheckoutSessionId, extractCurrency, extractEventType, extractOrderId, extractPaymentId, extractSpotId, extractTotalAmount, type DodoRawEvent } from "@/lib/dodo/types";
 import { verifyDodoWebhook } from "@/lib/dodo/webhook";
-import { getOrderById, updateOrderStatus } from "@/lib/services/order.service";
-import { createActivePlacement } from "@/lib/services/placement.service";
+import { fulfillPaidOrder } from "@/lib/services/fulfillment.service";
+import { getOrderByExternalPaymentId, getOrderById, updateOrderStatus } from "@/lib/services/order.service";
 import { createPayment, paymentAlreadyRecorded } from "@/lib/services/payment.service";
 
 /**
@@ -59,60 +59,70 @@ export async function POST(request: Request) {
     const eventType = extractEventType(event);
     const orderId = extractOrderId(event);
     const providerPaymentId = extractPaymentId(event);
+    const metadataSpotId = extractSpotId(event);
+    const checkoutSessionId = extractCheckoutSessionId(event);
+    const paidAmount = extractTotalAmount(event);
+    const paidCurrency = extractCurrency(event);
 
-    // 4/5. Resolve the order; if unknown, ack with 200 so Dodo stops retrying.
-    if (!orderId) {
-      console.log("[dodo-webhook] no order_id in event", JSON.stringify(event));
+    // 4/5. Resolve the order. Primary key is the metadata order_id we set at
+    // checkout. If that is somehow missing, fall back to the checkout session id
+    // we stored as `external_payment_id`. If still unknown, ack with 200 so Dodo
+    // stops retrying.
+    let order = orderId ? await getOrderById(orderId) : null;
+    if (!order && checkoutSessionId) {
+      order = await getOrderByExternalPaymentId(checkoutSessionId);
+      if (order) {
+        console.log(
+          "[dodo-webhook] resolved order via checkout_session_id fallback",
+          order.id
+        );
+      }
+    }
+    if (!order) {
+      console.log(
+        "[dodo-webhook] unknown order",
+        orderId ?? checkoutSessionId ?? "(no reference in event)"
+      );
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    const order = await getOrderById(orderId);
-    if (!order) {
-      console.log("[dodo-webhook] unknown order", orderId);
-      return NextResponse.json({ received: true }, { status: 200 });
+    // Cross-check the metadata spot_id against the order's stored zone. The
+    // order row remains authoritative; a mismatch is logged, never trusted.
+    if (metadataSpotId && metadataSpotId !== order.zoneId) {
+      console.error(
+        "[dodo-webhook] metadata spot_id mismatch — using order.zoneId",
+        { orderId: order.id, metadataSpotId, orderZoneId: order.zoneId }
+      );
     }
 
     // 6. Switch on event type.
     switch (eventType) {
       case "payment.succeeded": {
-        // 8. Idempotency — skip if we already recorded this provider payment.
-        if (
-          providerPaymentId &&
-          (await paymentAlreadyRecorded(order.id, providerPaymentId))
-        ) {
+        // 8. Claim via the shared fulfilment path — same code the return-URL
+        // verification on /checkout/success runs, so the two can never diverge.
+        // It is idempotent: a duplicate delivery (or an order already paid) is
+        // skipped instead of re-claiming, and it logs an amount mismatch.
+        const result = await fulfillPaidOrder({
+          order,
+          providerPaymentId,
+          paidAmountCents: paidAmount,
+          paidCurrency,
+          rawEvent: event,
+          source: "webhook",
+        });
+
+        if (!result.claimed) {
           console.log(
-            "[dodo-webhook] duplicate payment.succeeded for",
+            "[dodo-webhook] payment.succeeded ignored for",
             order.id,
-            providerPaymentId,
-            "— skipping"
+            result.reason,
+            providerPaymentId ?? "(no payment id)"
           );
           return NextResponse.json(
             { received: true, deduplicated: true },
             { status: 200 }
           );
         }
-
-        await createPayment({
-          orderId: order.id,
-          provider: PAYMENT_PROVIDER_DODO,
-          providerPaymentId,
-          amountCents: order.amountCents,
-          currency: order.currency,
-          status: "succeeded",
-          rawEvent: event,
-        });
-        await updateOrderStatus(order.id, "paid");
-        await createActivePlacement({
-          zoneId: order.zoneId,
-          orderId: order.id,
-          brandName: order.brandName,
-          brandUrl: order.brandUrl,
-          brandLogoUrl: order.brandLogoUrl,
-        });
-        await db
-          .update(adZones)
-          .set({ status: "occupied" })
-          .where(eq(adZones.id, order.zoneId));
 
         console.log(
           "[dodo-webhook] payment.succeeded processed for order",

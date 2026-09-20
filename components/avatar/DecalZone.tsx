@@ -4,9 +4,27 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
-import { Html } from "@react-three/drei";
+import { Html, useTexture } from "@react-three/drei";
 import { formatUSDFromCents } from "@/lib/format";
 import type { ZoneData } from "./ZoneRectangle";
+
+// ─── Raycast opt-out ─────────────────────────────────────────────────────────
+//
+// Only the decal surface itself should respond to a click — it is the spot.
+// Purely decorative children (dashed border outline, pulsing beacon) must NOT
+// be pickable: three.js raycasts `Line` objects with a default
+// `raycaster.params.Line.threshold = 1` WORLD UNIT, so a 16 cm dashed rectangle
+// silently swallows every click within a ~1 m tube around it. That made clicks
+// all over the body open a random spot's config modal. A no-op raycast removes
+// them from hit-testing entirely without changing how they render.
+const NO_RAYCAST = () => null;
+
+/**
+ * Brand logo size as a fraction of its spot's patch, so the logo sits inside the
+ * patch instead of covering it edge to edge. Used both as the projector scale
+ * for the logo decal and as the plane size in the no-surface fallback.
+ */
+const LOGO_INSET = 0.94;
 
 // ─── Tier colour palette ──────────────────────────────────────────────────────
 const TIER_COLORS = {
@@ -60,7 +78,7 @@ function PulsingZoneMarker({
   return (
     <group ref={groupRef} position={position} rotation={rotation}>
       {/* Outer soft ambient radial glow disc */}
-      <mesh position={[0, 0, 0.001]}>
+      <mesh position={[0, 0, 0.001]} raycast={NO_RAYCAST}>
         <circleGeometry args={[0.042, 32]} />
         <meshBasicMaterial
           ref={glowMatRef}
@@ -72,7 +90,7 @@ function PulsingZoneMarker({
         />
       </mesh>
       {/* Vibrant glowing placement ring */}
-      <mesh position={[0, 0, 0.002]}>
+      <mesh position={[0, 0, 0.002]} raycast={NO_RAYCAST}>
         <ringGeometry args={[0.024, 0.034, 32]} />
         <meshBasicMaterial
           ref={ringMatRef}
@@ -84,7 +102,7 @@ function PulsingZoneMarker({
         />
       </mesh>
       {/* Core emissive beacon dot */}
-      <mesh position={[0, 0, 0.003]}>
+      <mesh position={[0, 0, 0.003]} raycast={NO_RAYCAST}>
         <circleGeometry args={[0.012, 24]} />
         <meshBasicMaterial
           ref={coreMatRef}
@@ -96,11 +114,11 @@ function PulsingZoneMarker({
         />
       </mesh>
       {/* Precision target crosshair lines */}
-      <mesh position={[0, 0, 0.003]}>
+      <mesh position={[0, 0, 0.003]} raycast={NO_RAYCAST}>
         <planeGeometry args={[0.003, 0.016]} />
         <meshBasicMaterial color="#00e5ff" transparent opacity={0.8} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
-      <mesh position={[0, 0, 0.003]}>
+      <mesh position={[0, 0, 0.003]} raycast={NO_RAYCAST}>
         <planeGeometry args={[0.016, 0.003]} />
         <meshBasicMaterial color="#00e5ff" transparent opacity={0.8} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
@@ -108,10 +126,61 @@ function PulsingZoneMarker({
   );
 }
 
+// ─── Brand logo projected onto a claimed spot ────────────────────────────────────
+// Isolated so the `useTexture` hook is never called conditionally.
+//
+// The logo renders on a projected DecalGeometry — the same surface-hugging
+// geometry as the patch beneath it — instead of a flat billboard, so it wraps
+// the body and cannot float off a curved arm or thigh. DecalGeometry writes its
+// UVs from the projector box (`uv = 0.5 + position / size`, then clipped to the
+// box), so a texture applied to that geometry lands exactly on the projected
+// spot with no extra mapping work.
+function ZoneLogoDecal({
+  url,
+  geometry,
+  position,
+  rotation,
+}: {
+  url: string;
+  geometry: THREE.BufferGeometry;
+  /** Only needed for the flat-plane fallback, when no surface was hit. */
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+}) {
+  const texture = useTexture(url);
+  return (
+    <mesh
+      geometry={geometry}
+      position={position}
+      rotation={rotation}
+      renderOrder={2}
+    >
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        side={THREE.DoubleSide}
+        depthWrite={false}
+        toneMapped={false}
+        // The logo and the patch under it are coplanar by construction; pull the
+        // logo in front of the patch it sits on.
+        polygonOffset
+        polygonOffsetFactor={-8}
+        polygonOffsetUnits={-8}
+      />
+    </mesh>
+  );
+}
+
 // ─── Internal result type ─────────────────────────────────────────────────────
 interface ZoneGeoResult {
   type: "decal" | "fallback";
   geometry: THREE.BufferGeometry;
+  /**
+   * Patch the brand logo renders on. Always uses the same transform convention
+   * as `geometry`: a decal carries its own transform, the fallback plane is
+   * positioned/rotated by the mesh. Null while the spot has no logo.
+   */
+  logoGeometry: THREE.BufferGeometry | null;
   hitPoint: THREE.Vector3 | null;
   hitNormal: THREE.Vector3 | null;
 }
@@ -240,6 +309,7 @@ export default function DecalZone({
   const [hovered, setHovered] = useState(false);
   const [result, setResult] = useState<ZoneGeoResult | null>(null);
   const prevGeoRef = useRef<THREE.BufferGeometry | null>(null);
+  const prevLogoGeoRef = useRef<THREE.BufferGeometry | null>(null);
 
   const tierKey = (zone.tier in TIER_COLORS ? zone.tier : "standard") as TierKey;
   const tier = TIER_COLORS[tierKey];
@@ -280,7 +350,11 @@ export default function DecalZone({
 
     const hit = raycastLocalSpace(meshes, rayOrigin, rayDir, groupWorldMatrix);
 
+    // A claimed spot projects a second, slightly smaller decal for its logo.
+    const needsLogo = Boolean(isOccupied && zone.placement?.brandLogoUrl);
+
     let newGeo: THREE.BufferGeometry;
+    let newLogoGeo: THREE.BufferGeometry | null = null;
     let hitPoint: THREE.Vector3 | null = null;
     let hitNormal: THREE.Vector3 | null = null;
 
@@ -294,6 +368,38 @@ export default function DecalZone({
 
       const orientation = normalToEuler(hit.faceNormal);
 
+      // Project a decal patch onto the real mesh surface at `factor` × the zone
+      // size. Returns null when the projection produces nothing usable.
+      const projectDecal = (factor: number): THREE.BufferGeometry | null => {
+        try {
+          const geo = new DecalGeometry(
+            hit.mesh,
+            hit.point,
+            orientation,
+            new THREE.Vector3(w * tier.scale * factor, h * tier.scale * factor, 0.04) // projector depth
+          );
+          if (!geo.attributes.position || geo.attributes.position.count === 0) {
+            geo.dispose();
+            return null;
+          }
+          return geo;
+        } catch (err) {
+          console.warn(`[${zone.key}] DecalGeometry (scale ${factor}) threw:`, err);
+          return null;
+        }
+      };
+
+      /** Surface-aligned flat plane at the hit point, used when projection fails. */
+      const surfacePlane = (factor: number): THREE.BufferGeometry => {
+        const geo = new THREE.PlaneGeometry(
+          w * tier.scale * factor,
+          h * tier.scale * factor
+        );
+        geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(orientation));
+        geo.translate(hit.point.x, hit.point.y, hit.point.z);
+        return geo;
+      };
+
       // DecalGeometry (Approach A): projects geometry onto actual mesh surface.
       // Temporarily set matrixWorld to identity so DecalGeometry operates in local space.
       const savedMW = hit.mesh.matrixWorld.clone();
@@ -301,22 +407,20 @@ export default function DecalZone({
       hit.mesh.matrixWorld.identity();
       hit.mesh.normalMatrix.identity();
 
-      try {
-        newGeo = new DecalGeometry(
-          hit.mesh,
-          hit.point,
-          orientation,
-          new THREE.Vector3(w * tier.scale, h * tier.scale, 0.04) // projector depth
+      const fillGeo = projectDecal(1);
+      if (fillGeo) {
+        newGeo = fillGeo;
+        // The logo is inset (LOGO_INSET) so it sits inside the patch rather than
+        // covering it edge to edge. If the smaller projection yields nothing,
+        // the un-inset patch is a better result than no logo at all.
+        if (needsLogo) newLogoGeo = projectDecal(LOGO_INSET) ?? fillGeo;
+      } else {
+        // DecalGeometry can throw on degenerate meshes — use an oriented plane.
+        console.warn(
+          `[${zone.key}] DecalGeometry unavailable — using surface-aligned flat plane fallback`
         );
-        if (!newGeo.attributes.position || newGeo.attributes.position.count === 0) {
-          throw new Error("DecalGeometry produced empty buffer");
-        }
-      } catch (err) {
-        // DecalGeometry can throw on degenerate meshes — fall back to oriented plane at surface hit point
-        console.warn(`[${zone.key}] DecalGeometry threw:`, err, '— using surface-aligned flat plane fallback');
-        newGeo = new THREE.PlaneGeometry(w * tier.scale, h * tier.scale);
-        newGeo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(orientation));
-        newGeo.translate(hit.point.x, hit.point.y, hit.point.z);
+        newGeo = surfacePlane(1);
+        if (needsLogo) newLogoGeo = surfacePlane(LOGO_INSET);
       }
 
       hit.mesh.matrixWorld.copy(savedMW);
@@ -331,15 +435,31 @@ export default function DecalZone({
         `[${zone.key}] RAYCAST MISS — reason: no surface intersection found along ray from origin (${rayOrigin.toArray().map(v=>v.toFixed(2)).join(",")}) dir (${rayDir.toArray().map(v=>v.toFixed(2)).join(",")}) — using estimated fallback`
       );
       newGeo = new THREE.PlaneGeometry(w * tier.scale, h * tier.scale);
+      if (needsLogo) {
+        newLogoGeo = new THREE.PlaneGeometry(
+          w * tier.scale * LOGO_INSET,
+          h * tier.scale * LOGO_INSET
+        );
+      }
     }
 
-    // Dispose previous geometry to free GPU memory
-    if (prevGeoRef.current) {
-      prevGeoRef.current.dispose();
+    // Dispose previous geometry to free GPU memory. The logo shares the patch
+    // geometry when its own projection failed, so guard against a double dispose.
+    const prevGeo = prevGeoRef.current;
+    prevGeo?.dispose();
+    if (prevLogoGeoRef.current && prevLogoGeoRef.current !== prevGeo) {
+      prevLogoGeoRef.current.dispose();
     }
     prevGeoRef.current = newGeo;
+    prevLogoGeoRef.current = newLogoGeo;
 
-    setResult({ type: hit ? "decal" : "fallback", geometry: newGeo, hitPoint, hitNormal });
+    setResult({
+      type: hit ? "decal" : "fallback",
+      geometry: newGeo,
+      logoGeometry: newLogoGeo,
+      hitPoint,
+      hitNormal,
+    });
   }, [
     avatarScene,
     groupWorldMatrix,
@@ -348,6 +468,8 @@ export default function DecalZone({
     zone.normal?.x, zone.normal?.y, zone.normal?.z,
     zone.size.width, zone.size.height,
     zone.key,
+    isOccupied,
+    zone.placement?.brandLogoUrl,
     tier.scale,
     w, h,
   ]);
@@ -355,8 +477,13 @@ export default function DecalZone({
   // Dispose on unmount
   useEffect(() => {
     return () => {
-      prevGeoRef.current?.dispose();
+      const geo = prevGeoRef.current;
+      geo?.dispose();
+      if (prevLogoGeoRef.current && prevLogoGeoRef.current !== geo) {
+        prevLogoGeoRef.current.dispose();
+      }
       prevGeoRef.current = null;
+      prevLogoGeoRef.current = null;
     };
   }, []);
 
@@ -442,11 +569,12 @@ export default function DecalZone({
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { setHovered(false); document.body.style.cursor = "default"; }}
     >
-      {/* Clickable decal surface */}
+      {/* Clickable decal surface — drawn before the logo so the logo layers on top */}
       <mesh
         geometry={result.geometry}
         position={isFallback ? fallbackPos : undefined}
         rotation={isFallback ? fallbackRot : undefined}
+        renderOrder={1}
       >
         <meshStandardMaterial
           color={fillColor}
@@ -463,6 +591,16 @@ export default function DecalZone({
           metalness={0.1}
         />
       </mesh>
+
+      {/* Claimed spot: the purchased logo, projected onto the same surface as the patch */}
+      {isOccupied && zone.placement?.brandLogoUrl && result.logoGeometry && (
+        <ZoneLogoDecal
+          url={zone.placement.brandLogoUrl}
+          geometry={result.logoGeometry}
+          position={isFallback ? fallbackPos : undefined}
+          rotation={isFallback ? fallbackRot : undefined}
+        />
+      )}
 
       {/* Pulsing glow marker beacon at zone center — empty / unclaimed zones only */}
       {!isOccupied && (
@@ -493,7 +631,21 @@ export default function DecalZone({
 
         return (
           <primitive
-            ref={(lineObj: any) => lineObj?.computeLineDistances()}
+            // Block body (not a concise arrow): React 19 treats a value
+            // returned from a ref callback as a cleanup function, and
+            // computeLineDistances() returns the Line itself — which raised
+            // "_fiber.refCleanup is not a function" in the R3F reconciler.
+            ref={(lineObj: any) => {
+              lineObj?.computeLineDistances();
+              // Belt-and-braces: also opt out of hit-testing imperatively, so the
+              // border can never become clickable even if R3F skips re-applying
+              // this prop on a re-render. See NO_RAYCAST above.
+              if (lineObj) lineObj.raycast = NO_RAYCAST;
+            }}
+            // Decorative only — see NO_RAYCAST above. Without this, the Line's
+            // default 1-unit raycast threshold makes the whole surrounding body
+            // clickable for this spot.
+            raycast={NO_RAYCAST}
             object={new (THREE as any).Line(borderGeo, new THREE.LineDashedMaterial({ color: borderColor, dashSize: 0.014, gapSize: 0.009, depthWrite: false, transparent: true, opacity: borderOpacity }))}
             position={borderPos}
             rotation={borderRot}

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from ".";
 import { avatarModels, adZones } from "./schema";
+import { getSpotProductConfig } from "../spot-products";
 
 // ─── Zone definitions (derived from measured GLB bounding box proportions) ────
 // modelHeight: 1.8899, modelWidth: 1.8270, modelDepth: 0.3848, feetY: -0.0149, centerX: 0.0000
@@ -16,7 +17,6 @@ const ZONE_DATA = [
     key: "chest_center",
     label: "Chest",
     tier: "signature" as const,
-    basePriceCents: 50000,
     displayOrder: 1,
     anchorX: 0.0,
     anchorY: 1.157,
@@ -31,7 +31,6 @@ const ZONE_DATA = [
     key: "left_shoulder",
     label: "Left Shoulder",
     tier: "prime" as const,
-    basePriceCents: 25000,
     displayOrder: 2,
     anchorX: 0.20,
     anchorY: 1.47,
@@ -46,7 +45,6 @@ const ZONE_DATA = [
     key: "right_shoulder",
     label: "Right Shoulder",
     tier: "prime" as const,
-    basePriceCents: 25000,
     displayOrder: 3,
     anchorX: -0.20,
     anchorY: 1.47,
@@ -61,7 +59,6 @@ const ZONE_DATA = [
     key: "back_upper",
     label: "Upper Back",
     tier: "signature" as const,
-    basePriceCents: 35000,
     displayOrder: 12,
     anchorX: 0.0,
     anchorY: 1.459,
@@ -76,7 +73,6 @@ const ZONE_DATA = [
     key: "left_bicep",
     label: "Left Bicep",
     tier: "prime" as const,
-    basePriceCents: 15000,
     displayOrder: 4,
     anchorX: 0.35,
     anchorY: 1.50,
@@ -91,7 +87,6 @@ const ZONE_DATA = [
     key: "right_bicep",
     label: "Right Bicep",
     tier: "prime" as const,
-    basePriceCents: 15000,
     displayOrder: 5,
     anchorX: -0.35,
     anchorY: 1.50,
@@ -106,7 +101,6 @@ const ZONE_DATA = [
     key: "left_forearm",
     label: "Left Forearm",
     tier: "standard" as const,
-    basePriceCents: 8000,
     displayOrder: 6,
     anchorX: 0.52,
     anchorY: 1.50,
@@ -121,7 +115,6 @@ const ZONE_DATA = [
     key: "right_forearm",
     label: "Right Forearm",
     tier: "standard" as const,
-    basePriceCents: 8000,
     displayOrder: 7,
     anchorX: -0.52,
     anchorY: 1.50,
@@ -136,7 +129,6 @@ const ZONE_DATA = [
     key: "left_thigh_front",
     label: "Left Thigh",
     tier: "standard" as const,
-    basePriceCents: 8000,
     displayOrder: 8,
     anchorX: 0.11,
     anchorY: 0.78,
@@ -151,7 +143,6 @@ const ZONE_DATA = [
     key: "right_thigh_front",
     label: "Right Thigh",
     tier: "standard" as const,
-    basePriceCents: 8000,
     displayOrder: 9,
     anchorX: -0.11,
     anchorY: 0.78,
@@ -166,7 +157,6 @@ const ZONE_DATA = [
     key: "left_calf",
     label: "Left Calf",
     tier: "standard" as const,
-    basePriceCents: 8000,
     displayOrder: 10,
     anchorX: 0.11,
     anchorY: 0.38,
@@ -181,7 +171,6 @@ const ZONE_DATA = [
     key: "right_calf",
     label: "Right Calf",
     tier: "standard" as const,
-    basePriceCents: 8000,
     displayOrder: 11,
     anchorX: -0.11,
     anchorY: 0.38,
@@ -196,7 +185,6 @@ const ZONE_DATA = [
     key: "left_lower_back",
     label: "Left Lower Back",
     tier: "prime" as const,
-    basePriceCents: 15000,
     displayOrder: 13,
     anchorX: 0.08,
     anchorY: 0.90,
@@ -211,7 +199,6 @@ const ZONE_DATA = [
     key: "right_lower_back",
     label: "Right Lower Back",
     tier: "prime" as const,
-    basePriceCents: 15000,
     displayOrder: 14,
     anchorX: -0.08,
     anchorY: 0.90,
@@ -226,7 +213,6 @@ const ZONE_DATA = [
     key: "left_calf_back",
     label: "Left Rear Calf",
     tier: "standard" as const,
-    basePriceCents: 8000,
     displayOrder: 15,
     anchorX: 0.11,
     anchorY: 0.38,
@@ -241,7 +227,6 @@ const ZONE_DATA = [
     key: "right_calf_back",
     label: "Right Rear Calf",
     tier: "standard" as const,
-    basePriceCents: 8000,
     displayOrder: 16,
     anchorX: -0.11,
     anchorY: 0.38,
@@ -279,8 +264,21 @@ export async function seed() {
   console.log(`   ✅ Model: ${model.id} — ${model.name}`);
 
   // 2. Upsert ad zones (idempotent by model_id + key)
-  console.log("\n2️⃣  Upserting ad zones (12 zones)...");
+  //
+  // Prices are NOT defined here — they come from lib/spot-products.ts, the
+  // single authoritative spot → price mapping. This keeps the DB/UI price and
+  // the mapping (used by checkout to pick the Dodo product) from drifting.
+  console.log("\n2️⃣  Upserting ad zones (16 zones)...");
   for (const zone of ZONE_DATA) {
+    const pricing = getSpotProductConfig(zone.key);
+    if (!pricing) {
+      throw new Error(
+        `Seed aborted: zone "${zone.key}" has no entry in lib/spot-products.ts. ` +
+          "Every seeded zone must have an authoritative price + Dodo product."
+      );
+    }
+    const basePriceCents = pricing.priceCents;
+
     await db
       .insert(adZones)
       .values({
@@ -297,7 +295,7 @@ export async function seed() {
         width: zone.width,
         height: zone.height,
         tier: zone.tier,
-        basePriceCents: zone.basePriceCents,
+        basePriceCents,
         status: "available",
       })
       .onConflictDoUpdate({
@@ -314,10 +312,10 @@ export async function seed() {
           width: zone.width,
           height: zone.height,
           tier: zone.tier,
-          basePriceCents: zone.basePriceCents,
+          basePriceCents,
         },
       });
-    console.log(`   ✅ Zone: ${zone.key} — ${zone.label} (${zone.tier}, $${zone.basePriceCents / 100})`);
+    console.log(`   ✅ Zone: ${zone.key} — ${zone.label} (${zone.tier}, $${basePriceCents / 100})`);
   }
 
   console.log("\n🎉 Seed complete!\n");

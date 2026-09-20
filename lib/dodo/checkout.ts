@@ -1,12 +1,17 @@
 import { env } from "@/lib/env";
 import {
   DodoConfigError,
+  extractStatusCode,
   getDodoDiagnostics,
   getDodoClient,
 } from "./client";
 
 export interface CreateCheckoutSessionInput {
+  /** Server-validated Dodo product ID for the selected spot. */
+  productId: string;
   orderId: string;
+  /** Ad-zone id, carried in metadata so the webhook can correlate the spot. */
+  spotId: string;
   email: string;
   name?: string | null;
 }
@@ -27,7 +32,9 @@ export class DodoAuthError extends Error {
       `Dodo Payments authentication failed (401) in ${dodoEnvironment}. ` +
         "The API key is rejected for this environment — check that a test key is " +
         "paired with test_mode and a live key with live_mode, that the Production " +
-        "env var is set (not only Preview/Development), and redeploy after fixing."
+        "env var is set (not only Preview/Development), and redeploy after fixing. " +
+        "Run GET /api/payments/dodo/status?probe=1 to confirm which environment the " +
+        "configured key is actually accepted in."
     );
     this.name = "DodoAuthError";
     this.dodoEnvironment = dodoEnvironment;
@@ -38,6 +45,10 @@ export class DodoAuthError extends Error {
 /**
  * Create a Dodo hosted checkout session for an ad-zone placement.
  *
+ * The caller MUST pass a product ID it has already validated against the
+ * spot→product mapping — this function never chooses a product itself, so a
+ * client can never influence which product is charged.
+ *
  * Field names verified directly against the installed SDK's
  * `resources/checkout-sessions.d.ts` (v2.50.0):
  *   create() -> CheckoutSessionResponse with `session_id` and `checkout_url`.
@@ -45,16 +56,20 @@ export class DodoAuthError extends Error {
 export async function createCheckoutSession(
   input: CreateCheckoutSessionInput
 ): Promise<CheckoutSessionResult> {
-  let productId: string;
-  try {
-    productId = env.DODO_AD_ZONE_PRODUCT_ID;
-  } catch {
+  const productId = input.productId.trim();
+  if (!productId) {
     throw new DodoConfigError(
-      "DODO_AD_ZONE_PRODUCT_ID is not configured. Set it in the deployment Production environment and redeploy."
+      "No Dodo product ID was resolved for this spot. Refusing to create a checkout with a fallback product."
     );
   }
 
-  const returnUrl = `${env.NEXT_PUBLIC_APP_URL}/checkout/success`;
+  // The order id rides in the return_url because Dodo appends only ITS OWN
+  // parameters to it (`payment_id`, `status`, `email` — never our session id).
+  // Without it the success page cannot tell which order the buyer just paid, so
+  // nothing gets claimed from the return trip.
+  const returnUrl =
+    `${env.NEXT_PUBLIC_APP_URL}/checkout/success` +
+    `?order_id=${encodeURIComponent(input.orderId)}`;
 
   let session;
   try {
@@ -62,7 +77,7 @@ export async function createCheckoutSession(
       product_cart: [{ product_id: productId, quantity: 1 }],
       customer: { email: input.email, name: input.name ?? null },
       return_url: returnUrl,
-      metadata: { order_id: input.orderId },
+      metadata: { order_id: input.orderId, spot_id: input.spotId },
     });
   } catch (err) {
     throw normalizeDodoError(err);
@@ -93,29 +108,12 @@ function normalizeDodoError(err: unknown): unknown {
     console.error(
       `[DodoPayments] 401 from ${diag.baseUrl} environment=${diag.environment} ` +
         `keyConfigured=${diag.keyConfigured} keyClass=${diag.keyClass} ` +
-        `source=${diag.envVarSource}. Not retrying — fix credentials/environment and redeploy.`
+        `source=${diag.envVarSource}. Not retrying — fix credentials/environment and redeploy ` +
+        "(GET /api/payments/dodo/status?probe=1 says whether the key is accepted in this environment)."
     );
     return new DodoAuthError(diag.environment, diag.keyConfigured);
   }
 
   return err;
-}
-
-function extractStatusCode(err: unknown): number | undefined {
-  if (typeof err === "object" && err !== null) {
-    const rec = err as Record<string, unknown>;
-    if (typeof rec.status === "number") return rec.status;
-    if (typeof rec.statusCode === "number") return rec.statusCode;
-    // Stainless SDK errors nest the HTTP status in several shapes.
-    const error = rec.error as Record<string, unknown> | undefined;
-    if (error && typeof error.statusCode === "number")
-      return error.statusCode as number;
-    // Some Stainless builds expose status only on the message, e.g. "401 ...".
-    if (err instanceof Error) {
-      const m = err.message.match(/\b(401|403|404|409|422|429|5\d\d)\b/);
-      if (m) return Number(m[1]);
-    }
-  }
-  return undefined;
 }
 

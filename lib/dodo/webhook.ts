@@ -27,9 +27,15 @@ export function getWebhookSecret(): string {
  *
  * Throws (WebhookVerificationError from `standardwebhooks`) when the signature
  * is invalid — deliberately NOT swallowed here. The route handler catches it
- * and returns 400. The `standardwebhooks` verify() with `jsonParse: false`
- * verifies the signature only and returns the raw payload, so JSON parsing is
- * kept separate.
+ * and returns 400.
+ *
+ * IMPORTANT: in `standardwebhooks` v1.1 `verify(..., { jsonParse: false })`
+ * returns `undefined` on a VALID signature (it only signals "signature ok"); it
+ * does NOT return the raw payload string. The previous code parsed that
+ * `undefined` and threw, so every genuine webhook was rejected as
+ * "Invalid signature" — which is why successful payments never claimed the
+ * spot or rendered the logo. We verify the signature, then parse the raw body
+ * ourselves.
  */
 export function verifyDodoWebhook(
   rawBody: string,
@@ -43,10 +49,9 @@ export function verifyDodoWebhook(
     "webhook-timestamp": headers["webhook-timestamp"] ?? "",
   };
 
-  const payload = webhook.verify(rawBody, signedHeaders, {
-    jsonParse: false,
-  });
+  // Throws WebhookVerificationError on an invalid/expired signature.
+  webhook.verify(rawBody, signedHeaders, { jsonParse: false });
 
-  // standardwebhooks returns the raw payload string when jsonParse is false.
-  return JSON.parse(String(payload)) as DodoRawEvent;
+  // Parse the verified raw body ourselves (see note above).
+  return JSON.parse(rawBody) as DodoRawEvent;
 }
