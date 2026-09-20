@@ -24,7 +24,7 @@ const NO_RAYCAST = () => null;
  * patch instead of covering it edge to edge. Used both as the projector scale
  * for the logo decal and as the plane size in the no-surface fallback.
  */
-const LOGO_INSET = 0.94;
+const LOGO_INSET = 1.0;
 
 // ─── Tier colour palette ──────────────────────────────────────────────────────
 const TIER_COLORS = {
@@ -34,6 +34,26 @@ const TIER_COLORS = {
   standard:  { fill: 0x7209b7, border: 0xb5179e, emissive: 0x1a0030, scale: 0.85 },
 } as const;
 type TierKey = keyof typeof TIER_COLORS;
+
+/**
+ * Return the anatomical body curvature radius (in meters) for a zone key
+ * so that rectangular spot planes wrap flush against the avatar body.
+ */
+function getZoneCurvatureRadius(zoneKey: string): number {
+  if (zoneKey.includes("chest") || zoneKey.includes("back")) {
+    return 0.22; // Chest/back torso radius
+  }
+  if (zoneKey.includes("bicep") || zoneKey.includes("forearm")) {
+    return 0.08; // Arm cylinder radius
+  }
+  if (zoneKey.includes("thigh") || zoneKey.includes("calf")) {
+    return 0.10; // Leg cylinder radius
+  }
+  if (zoneKey.includes("shoulder")) {
+    return 0.14; // Shoulder curvature radius
+  }
+  return 0.20;
+}
 
 // ─── Pulsing Glow Marker for Empty Ad Zones ──────────────────────────────────
 function PulsingZoneMarker({
@@ -126,24 +146,12 @@ function PulsingZoneMarker({
   );
 }
 
-// ─── Brand logo projected onto a claimed spot ────────────────────────────────────
-// Isolated so the `useTexture` hook is never called conditionally.
-//
-// The logo renders on a projected DecalGeometry — the same surface-hugging
-// geometry as the patch beneath it — instead of a flat billboard, so it wraps
-// the body and cannot float off a curved arm or thigh. DecalGeometry writes its
-// UVs from the projector box (`uv = 0.5 + position / size`, then clipped to the
-// box), so a texture applied to that geometry lands exactly on the projected
-// spot with no extra mapping work.
+// ─── Brand logo texture fitting ──────────────────────────────────────────────
 /**
- * Calculate contained image dimensions that fit inside a maxWidth × maxHeight box
- * while preserving the source image's aspect ratio.  Equivalent to CSS
- * `object-fit: contain`.
- *
- * Safe against zero / NaN / Infinity — returns fallback dimensions when inputs
- * are degenerate.
+ * Calculate full-cover image dimensions that completely cover the maxWidth × maxHeight box
+ * without leaving empty transparent margins. Equivalent to CSS `object-fit: cover`.
  */
-function calcContainedSize(
+function calcCoverSize(
   imgW: number,
   imgH: number,
   maxW: number,
@@ -155,7 +163,6 @@ function calcContainedSize(
     !isFinite(maxW) || maxW <= 0 ||
     !isFinite(maxH) || maxH <= 0
   ) {
-    // Degenerate — return the max area as-is so the mesh still renders
     return { drawW: Math.max(maxW, 0.01), drawH: Math.max(maxH, 0.01) };
   }
 
@@ -163,24 +170,20 @@ function calcContainedSize(
   const zoneAspect = maxW / maxH;
 
   if (imgAspect > zoneAspect) {
-    // Image is wider relative to zone → constrain by width
-    return { drawW: maxW, drawH: maxW / imgAspect };
-  } else if (imgAspect < zoneAspect) {
-    // Image is taller relative to zone → constrain by height
+    // Image is wider than zone -> scale height to fill, center width
     return { drawW: maxH * imgAspect, drawH: maxH };
+  } else {
+    // Image is taller than zone -> scale width to fill, center height
+    return { drawW: maxW, drawH: maxW / imgAspect };
   }
-  // Perfect match
-  return { drawW: maxW, drawH: maxH };
 }
 
 /**
- * Draw an image onto a canvas using object-fit:contain logic.
+ * Draw an image onto a canvas using object-fit:cover logic.
  * Returns a THREE.CanvasTexture whose aspect ratio matches the advertising
- * zone, with the source image centred and letter-boxed / pillar-boxed.
- *
- * Falls back to the original texture when canvas creation fails.
+ * zone, with the source image filling the entire area (0% transparent borders).
  */
-function buildContainedTexture(
+function buildCoverTexture(
   img: CanvasImageSource & { width: number; height: number },
   zoneW: number,
   zoneH: number,
@@ -208,7 +211,6 @@ function buildContainedTexture(
     canvasH = MAX_CANVAS;
     canvasW = Math.round(MAX_CANVAS * zoneAspect);
   }
-  // Clamp to reasonable minimums
   canvasW = Math.max(canvasW, 1);
   canvasH = Math.max(canvasH, 1);
 
@@ -218,11 +220,9 @@ function buildContainedTexture(
   const ctx = canvas.getContext("2d");
   if (!ctx) return originalTexture;
 
-  // Clear to transparent (default canvas state)
   ctx.clearRect(0, 0, canvasW, canvasH);
 
-  // Contain calculation
-  const { drawW, drawH } = calcContainedSize(
+  const { drawW, drawH } = calcCoverSize(
     img.width, img.height,
     canvasW, canvasH,
   );
@@ -233,7 +233,6 @@ function buildContainedTexture(
   try {
     ctx.drawImage(img, x, y, drawW, drawH);
   } catch {
-    // drawImage can throw on tainted cross-origin images — fall back
     return originalTexture;
   }
 
@@ -244,18 +243,6 @@ function buildContainedTexture(
 }
 
 // ─── Brand logo projected onto a claimed spot ────────────────────────────────
-// Isolated so the `useTexture` hook is never called conditionally.
-//
-// The logo renders on a projected DecalGeometry — the same surface-hugging
-// geometry as the patch beneath it — instead of a flat billboard, so it wraps
-// the body and cannot float off a curved arm or thigh. DecalGeometry writes its
-// UVs from the projector box (`uv = 0.5 + position / size`, then clipped to the
-// box), so a texture applied to that geometry lands exactly on the projected
-// spot with no extra mapping work.
-//
-// **Aspect-ratio fix**: The raw texture is drawn onto a canvas that matches the
-// advertising zone's aspect ratio using contain logic (no stretching, no
-// cropping). The canvas texture is what the material actually samples.
 function ZoneLogoDecal({
   url,
   geometry,
@@ -275,23 +262,23 @@ function ZoneLogoDecal({
 }) {
   const rawTexture = useTexture(url);
 
-  // Build a contain-fitted canvas texture once per (url × zone dims).
-  const containedTexture = useMemo<THREE.Texture>(() => {
+  // Build a full-cover canvas texture once per (url × zone dims) so the image fills the rectangle.
+  const coveredTexture = useMemo<THREE.Texture>(() => {
     const img = rawTexture?.image as
       | (CanvasImageSource & { width: number; height: number })
       | undefined;
     if (!img || !img.width || !img.height) return rawTexture;
-    return buildContainedTexture(img, zoneWidth, zoneHeight, rawTexture);
+    return buildCoverTexture(img, zoneWidth, zoneHeight, rawTexture);
   }, [rawTexture, zoneWidth, zoneHeight]);
 
-  // Dispose the canvas texture we created (not the original drei-cached one)
+  // Dispose the canvas texture we created
   useEffect(() => {
     return () => {
-      if (containedTexture !== rawTexture) {
-        containedTexture.dispose();
+      if (coveredTexture !== rawTexture) {
+        coveredTexture.dispose();
       }
     };
-  }, [containedTexture, rawTexture]);
+  }, [coveredTexture, rawTexture]);
 
   return (
     <mesh
@@ -301,13 +288,11 @@ function ZoneLogoDecal({
       renderOrder={2}
     >
       <meshBasicMaterial
-        map={containedTexture}
+        map={coveredTexture}
         transparent
         side={THREE.DoubleSide}
         depthWrite={false}
         toneMapped={false}
-        // The logo and the patch under it are coplanar by construction; pull the
-        // logo in front of the patch it sits on.
         polygonOffset
         polygonOffsetFactor={-8}
         polygonOffsetUnits={-8}
@@ -514,26 +499,38 @@ export default function DecalZone({
       // Orientation derived from the raycast face normal — correct per-zone surface direction.
       const orientation = normalToEuler(hit.faceNormal);
 
-      // Surface-aligned clean rectangular plane at the hit point.
-      // Pushed 3mm along the face normal so it sits flush on the surface without z-fighting.
+      // Body-conforming curved rectangular plane at the hit point.
+      // Subdivided along X so it curves smoothly along the body's cylinder radius,
+      // keeping its edges flush against the avatar rather than floating in the air.
       const SURFACE_OFFSET = 0.003;
-      const surfacePlane = (factor: number, extraNormalOffset = 0): THREE.BufferGeometry => {
-        const geo = new THREE.PlaneGeometry(
-          w * tier.scale * factor,
-          h * tier.scale * factor
-        );
+      const R = getZoneCurvatureRadius(zone.key);
+
+      const buildCurvedPlane = (factor: number, extraNormalOffset = 0): THREE.BufferGeometry => {
+        const widthVal = w * tier.scale * factor;
+        const heightVal = h * tier.scale * factor;
+        const geo = new THREE.PlaneGeometry(widthVal, heightVal, 24, 2);
+        const posAttr = geo.attributes.position as THREE.BufferAttribute;
+
+        for (let i = 0; i < posAttr.count; i++) {
+          const vx = posAttr.getX(i);
+          // Cylindrical curvature along X: curve backwards in -Z so edges hug the body
+          const deltaZ = -(R - Math.sqrt(Math.max(0, R * R - vx * vx)));
+          posAttr.setZ(i, deltaZ);
+        }
+        posAttr.needsUpdate = true;
+        geo.computeVertexNormals();
+
         geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(orientation));
-        // Offset slightly outward along the face normal to sit flush on the surface
         const offsetPt = hit.point.clone().addScaledVector(hit.faceNormal, SURFACE_OFFSET + extraNormalOffset);
         geo.translate(offsetPt.x, offsetPt.y, offsetPt.z);
         return geo;
       };
 
-      // Both spot patch and brand logo use clean, fixed rectangular planes
+      // Both spot patch and brand logo use clean, body-curved rectangular planes
       // attached flush to the mesh surface at the hit point.
-      newGeo = surfacePlane(1, 0);
+      newGeo = buildCurvedPlane(1, 0);
       if (needsLogo) {
-        newLogoGeo = surfacePlane(LOGO_INSET, 0.001);
+        newLogoGeo = buildCurvedPlane(LOGO_INSET, 0.001);
       }
 
       hitPoint  = hit.point;
@@ -551,11 +548,21 @@ export default function DecalZone({
       const FALLBACK_OFFSET = 0.003;
       const fallbackOrientation = normalToEuler(aimNorm);
       const fallbackEuler = fallbackOrientation;
+      const R_fb = getZoneCurvatureRadius(zone.key);
       const buildFallbackPlane = (factor: number): THREE.BufferGeometry => {
-        const geo = new THREE.PlaneGeometry(
-          w * tier.scale * factor,
-          h * tier.scale * factor
-        );
+        const widthVal = w * tier.scale * factor;
+        const heightVal = h * tier.scale * factor;
+        const geo = new THREE.PlaneGeometry(widthVal, heightVal, 24, 2);
+        const posAttr = geo.attributes.position as THREE.BufferAttribute;
+
+        for (let i = 0; i < posAttr.count; i++) {
+          const vx = posAttr.getX(i);
+          const deltaZ = -(R_fb - Math.sqrt(Math.max(0, R_fb * R_fb - vx * vx)));
+          posAttr.setZ(i, deltaZ);
+        }
+        posAttr.needsUpdate = true;
+        geo.computeVertexNormals();
+
         geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(fallbackEuler));
         const anchor = aimPt.clone().addScaledVector(aimNorm, FALLBACK_OFFSET);
         geo.translate(anchor.x, anchor.y, anchor.z);
@@ -612,17 +619,31 @@ export default function DecalZone({
     };
   }, []);
 
-  // ── Dashed border geometry for unclaimed zones ──────────────────────────────
+  // ── Dashed border geometry for unclaimed zones (body-curved) ────────────────
   const borderGeo = useMemo(() => {
     const hw = (w * tier.scale) / 2;
     const hh = (h * tier.scale) / 2;
-    const pts = [
-      new THREE.Vector3(-hw,  hh, 0),
-      new THREE.Vector3( hw,  hh, 0),
-      new THREE.Vector3( hw, -hh, 0),
-      new THREE.Vector3(-hw, -hh, 0),
-      new THREE.Vector3(-hw,  hh, 0),
-    ];
+    const R_border = getZoneCurvatureRadius(zone.key);
+    const numSegs = 16;
+    const pts: THREE.Vector3[] = [];
+
+    const curveZ = (x: number) => -(R_border - Math.sqrt(Math.max(0, R_border * R_border - x * x)));
+
+    // Top edge: -hw to +hw
+    for (let i = 0; i <= numSegs; i++) {
+      const x = -hw + (2 * hw * i) / numSegs;
+      pts.push(new THREE.Vector3(x, hh, curveZ(x)));
+    }
+    // Right edge: hh to -hh
+    pts.push(new THREE.Vector3(hw, -hh, curveZ(hw)));
+    // Bottom edge: +hw to -hw
+    for (let i = 0; i <= numSegs; i++) {
+      const x = hw - (2 * hw * i) / numSegs;
+      pts.push(new THREE.Vector3(x, -hh, curveZ(x)));
+    }
+    // Left edge: -hh to hh
+    pts.push(new THREE.Vector3(-hw, hh, curveZ(-hw)));
+
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
     const lineDistances = [0];
     for (let i = 1; i < pts.length; i++) {
@@ -630,7 +651,7 @@ export default function DecalZone({
     }
     geo.setAttribute("lineDistance", new THREE.Float32BufferAttribute(lineDistances, 1));
     return geo;
-  }, [w, h, tier.scale]);
+  }, [w, h, tier.scale, zone.key]);
 
   useEffect(() => {
     return () => {
@@ -643,11 +664,13 @@ export default function DecalZone({
 
   // Visual styling:
   // - Unclaimed: transparent faint fill (0.04) + neutral dark dashed border
-  // - Occupied: solid full-opacity logo/placement fill, no dashed border
-  const fillColor = isOccupied ? 0x22c55e : 0x050c18;
-  const fillOpacity = isOccupied ? 0.95 : (hovered ? 0.12 : 0.04);
-  const emissiveColor = isOccupied ? 0x113300 : (hovered ? 0x00d4ff : 0x000000);
-  const emissiveIntensity = isOccupied ? 0.6 : (hovered ? 0.25 : 0.0);
+  // - Occupied with logo: clean full-cover brand logo without green border bleed
+  // - Occupied without logo: solid full-opacity placement fill
+  const hasLogo = Boolean(isOccupied && zone.placement?.brandLogoUrl);
+  const fillColor = isOccupied ? (hasLogo ? 0x050c18 : 0x22c55e) : 0x050c18;
+  const fillOpacity = isOccupied ? (hasLogo ? 0.0 : 0.95) : (hovered ? 0.12 : 0.04);
+  const emissiveColor = isOccupied ? (hasLogo ? 0x000000 : 0x113300) : (hovered ? 0x00d4ff : 0x000000);
+  const emissiveIntensity = isOccupied ? (hasLogo ? 0.0 : 0.6) : (hovered ? 0.25 : 0.0);
 
   // DecalGeometry vertices carry their own world position — no extra transform needed.
   // Fallback plane geometry is already positioned/rotated by buildFallbackPlane.
