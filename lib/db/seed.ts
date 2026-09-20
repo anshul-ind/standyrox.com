@@ -77,9 +77,9 @@ const ZONE_DATA = [
     anchorX: 0.35,
     anchorY: 1.50,
     anchorZ: 0.015,
-    normalX: 0.0,
+    normalX: 1.0,   // left arm faces outward (+X direction)
     normalY: 0.0,
-    normalZ: 1.0,
+    normalZ: 0.0,
     width: 0.10,   // narrow vertical (1:1.6)
     height: 0.16,
   },
@@ -91,9 +91,9 @@ const ZONE_DATA = [
     anchorX: -0.35,
     anchorY: 1.50,
     anchorZ: 0.015,
-    normalX: 0.0,
+    normalX: -1.0,  // right arm faces outward (-X direction)
     normalY: 0.0,
-    normalZ: 1.0,
+    normalZ: 0.0,
     width: 0.10,   // narrow vertical (1:1.6) — mirrors left
     height: 0.16,
   },
@@ -105,9 +105,9 @@ const ZONE_DATA = [
     anchorX: 0.52,
     anchorY: 1.50,
     anchorZ: -0.01,
-    normalX: 0.0,
+    normalX: 1.0,   // left forearm faces outward (+X direction)
     normalY: 0.0,
-    normalZ: 1.0,
+    normalZ: 0.0,
     width: 0.075,  // same orientation as bicep (1:1.6), smaller overall area
     height: 0.12,
   },
@@ -119,9 +119,9 @@ const ZONE_DATA = [
     anchorX: -0.52,
     anchorY: 1.50,
     anchorZ: -0.01,
-    normalX: 0.0,
+    normalX: -1.0,  // right forearm faces outward (-X direction)
     normalY: 0.0,
-    normalZ: 1.0,
+    normalZ: 0.0,
     width: 0.075,  // same orientation as bicep (1:1.6), smaller overall area — mirrors left
     height: 0.12,
   },

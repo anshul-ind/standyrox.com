@@ -250,7 +250,7 @@ export default function LogoUploadForm({ zoneId }: { zoneId: string }) {
             <img
               src={logoUrl}
               alt="Logo preview"
-              className="h-12 w-12 rounded-lg object-cover border border-white/10"
+              className="h-12 w-12 rounded-lg object-contain border border-white/10"
             />
           </div>
         )}

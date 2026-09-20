@@ -135,19 +135,164 @@ function PulsingZoneMarker({
 // UVs from the projector box (`uv = 0.5 + position / size`, then clipped to the
 // box), so a texture applied to that geometry lands exactly on the projected
 // spot with no extra mapping work.
+/**
+ * Calculate contained image dimensions that fit inside a maxWidth × maxHeight box
+ * while preserving the source image's aspect ratio.  Equivalent to CSS
+ * `object-fit: contain`.
+ *
+ * Safe against zero / NaN / Infinity — returns fallback dimensions when inputs
+ * are degenerate.
+ */
+function calcContainedSize(
+  imgW: number,
+  imgH: number,
+  maxW: number,
+  maxH: number,
+): { drawW: number; drawH: number } {
+  if (
+    !isFinite(imgW) || imgW <= 0 ||
+    !isFinite(imgH) || imgH <= 0 ||
+    !isFinite(maxW) || maxW <= 0 ||
+    !isFinite(maxH) || maxH <= 0
+  ) {
+    // Degenerate — return the max area as-is so the mesh still renders
+    return { drawW: Math.max(maxW, 0.01), drawH: Math.max(maxH, 0.01) };
+  }
+
+  const imgAspect = imgW / imgH;
+  const zoneAspect = maxW / maxH;
+
+  if (imgAspect > zoneAspect) {
+    // Image is wider relative to zone → constrain by width
+    return { drawW: maxW, drawH: maxW / imgAspect };
+  } else if (imgAspect < zoneAspect) {
+    // Image is taller relative to zone → constrain by height
+    return { drawW: maxH * imgAspect, drawH: maxH };
+  }
+  // Perfect match
+  return { drawW: maxW, drawH: maxH };
+}
+
+/**
+ * Draw an image onto a canvas using object-fit:contain logic.
+ * Returns a THREE.CanvasTexture whose aspect ratio matches the advertising
+ * zone, with the source image centred and letter-boxed / pillar-boxed.
+ *
+ * Falls back to the original texture when canvas creation fails.
+ */
+function buildContainedTexture(
+  img: CanvasImageSource & { width: number; height: number },
+  zoneW: number,
+  zoneH: number,
+  originalTexture: THREE.Texture,
+): THREE.Texture {
+  if (
+    typeof document === "undefined" ||
+    !img.width || !img.height ||
+    !isFinite(zoneW) || zoneW <= 0 ||
+    !isFinite(zoneH) || zoneH <= 0
+  ) {
+    return originalTexture;
+  }
+
+  const zoneAspect = zoneW / zoneH;
+
+  // Canvas resolution: cap at 1024 px on the longest side for GPU memory
+  const MAX_CANVAS = 1024;
+  let canvasW: number;
+  let canvasH: number;
+  if (zoneAspect >= 1) {
+    canvasW = MAX_CANVAS;
+    canvasH = Math.round(MAX_CANVAS / zoneAspect);
+  } else {
+    canvasH = MAX_CANVAS;
+    canvasW = Math.round(MAX_CANVAS * zoneAspect);
+  }
+  // Clamp to reasonable minimums
+  canvasW = Math.max(canvasW, 1);
+  canvasH = Math.max(canvasH, 1);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return originalTexture;
+
+  // Clear to transparent (default canvas state)
+  ctx.clearRect(0, 0, canvasW, canvasH);
+
+  // Contain calculation
+  const { drawW, drawH } = calcContainedSize(
+    img.width, img.height,
+    canvasW, canvasH,
+  );
+
+  const x = (canvasW - drawW) / 2;
+  const y = (canvasH - drawH) / 2;
+
+  try {
+    ctx.drawImage(img, x, y, drawW, drawH);
+  } catch {
+    // drawImage can throw on tainted cross-origin images — fall back
+    return originalTexture;
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// ─── Brand logo projected onto a claimed spot ────────────────────────────────
+// Isolated so the `useTexture` hook is never called conditionally.
+//
+// The logo renders on a projected DecalGeometry — the same surface-hugging
+// geometry as the patch beneath it — instead of a flat billboard, so it wraps
+// the body and cannot float off a curved arm or thigh. DecalGeometry writes its
+// UVs from the projector box (`uv = 0.5 + position / size`, then clipped to the
+// box), so a texture applied to that geometry lands exactly on the projected
+// spot with no extra mapping work.
+//
+// **Aspect-ratio fix**: The raw texture is drawn onto a canvas that matches the
+// advertising zone's aspect ratio using contain logic (no stretching, no
+// cropping). The canvas texture is what the material actually samples.
 function ZoneLogoDecal({
   url,
   geometry,
   position,
   rotation,
+  zoneWidth,
+  zoneHeight,
 }: {
   url: string;
   geometry: THREE.BufferGeometry;
   /** Only needed for the flat-plane fallback, when no surface was hit. */
   position?: [number, number, number];
   rotation?: [number, number, number];
+  /** Effective advertising-zone dimensions (3-D units) the logo must fit inside. */
+  zoneWidth: number;
+  zoneHeight: number;
 }) {
-  const texture = useTexture(url);
+  const rawTexture = useTexture(url);
+
+  // Build a contain-fitted canvas texture once per (url × zone dims).
+  const containedTexture = useMemo<THREE.Texture>(() => {
+    const img = rawTexture?.image as
+      | (CanvasImageSource & { width: number; height: number })
+      | undefined;
+    if (!img || !img.width || !img.height) return rawTexture;
+    return buildContainedTexture(img, zoneWidth, zoneHeight, rawTexture);
+  }, [rawTexture, zoneWidth, zoneHeight]);
+
+  // Dispose the canvas texture we created (not the original drei-cached one)
+  useEffect(() => {
+    return () => {
+      if (containedTexture !== rawTexture) {
+        containedTexture.dispose();
+      }
+    };
+  }, [containedTexture, rawTexture]);
+
   return (
     <mesh
       geometry={geometry}
@@ -156,7 +301,7 @@ function ZoneLogoDecal({
       renderOrder={2}
     >
       <meshBasicMaterial
-        map={texture}
+        map={containedTexture}
         transparent
         side={THREE.DoubleSide}
         depthWrite={false}
@@ -200,34 +345,30 @@ function normalToEuler(normal: THREE.Vector3): THREE.Euler {
 }
 
 /**
- * Raycast against avatar meshes, returning a hit point in the
- * FloatingAvatarGroup's LOCAL coordinate space (same space the zone anchors live in).
+ * Raycast against avatar meshes, returning hit data in BOTH world space AND
+ * FloatingAvatarGroup LOCAL coordinate space.
  *
- * Two strategies are used:
- *  - Regular Mesh: set matrixWorld=identity so the raycaster operates in local space directly.
- *  - SkinnedMesh: SkinnedMesh.raycast() uses matrixWorld and applies bone transforms per-vertex.
- *    We must pass a WORLD-SPACE ray, then convert the hit back to local space.
- *
- * @param meshes   - All meshes collected from the avatar scene clone
- * @param rayOrigin - Ray origin in FloatingAvatarGroup LOCAL space
- * @param rayDir   - Ray direction in LOCAL space (will be negated-normal, unit vector)
- * @param groupWorldMatrix - The FloatingAvatarGroup's world matrix (to convert hit back to local)
+ * worldPoint is required for DecalGeometry on SkinnedMesh: DecalGeometry clips
+ * against vertex positions as they exist in the coordinate space implied by the
+ * mesh's matrixWorld. For a SkinnedMesh with bones applied, those positions are
+ * in world space. Passing a local-space point to DecalGeometry with a real
+ * matrixWorld causes a mismatch — the projector box misses the surface.
  */
 function raycastLocalSpace(
   meshes: THREE.Mesh[],
   rayOrigin: THREE.Vector3,
   rayDir: THREE.Vector3,
   groupWorldMatrix: THREE.Matrix4
-): { mesh: THREE.Mesh; point: THREE.Vector3; faceNormal: THREE.Vector3; distance: number } | null {
-  const MAX_DIST = 4.0; // generous: arm depth ~ 0.12 units, but bones shift things
-  let best: { dist: number; mesh: THREE.Mesh; point: THREE.Vector3; faceNormal: THREE.Vector3 } | null = null;
+): { mesh: THREE.Mesh; point: THREE.Vector3; worldPoint: THREE.Vector3; faceNormal: THREE.Vector3; distance: number } | null {
+  const MAX_DIST = 4.0;
+  let best: { dist: number; mesh: THREE.Mesh; point: THREE.Vector3; worldPoint: THREE.Vector3; faceNormal: THREE.Vector3 } | null = null;
 
-  // World-space equivalents (for SkinnedMesh)
+  // World-space ray (for SkinnedMesh whose raycast() uses matrixWorld internally)
   const worldOrigin = rayOrigin.clone().applyMatrix4(groupWorldMatrix);
   const worldDir    = rayDir.clone().transformDirection(groupWorldMatrix).normalize();
   const worldRaycaster = new THREE.Raycaster(worldOrigin, worldDir, 0, MAX_DIST);
 
-  // Local-space raycaster (for regular Mesh with identity matrixWorld trick)
+  // Local-space ray (for regular Mesh with identity matrixWorld trick)
   const localRaycaster = new THREE.Raycaster(rayOrigin.clone(), rayDir.clone().normalize(), 0, MAX_DIST);
 
   // Inverse group world matrix — convert world-space hit back to local space
@@ -247,8 +388,9 @@ function raycastLocalSpace(
       const hits = worldRaycaster.intersectObject(mesh, false);
       if (hits.length > 0) {
         const h = hits[0];
-        // Convert hit point from world → local space
-        const localPoint = h.point.clone().applyMatrix4(invGroupMatrix);
+        // h.point is in WORLD space. Store both for downstream use.
+        const worldPoint = h.point.clone();
+        const localPoint = worldPoint.clone().applyMatrix4(invGroupMatrix);
         const rawNormal = h.normal ?? h.face?.normal ?? new THREE.Vector3(0, 0, 1);
         const worldNormal = rawNormal.clone()
           .applyMatrix3(new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld))
@@ -257,7 +399,7 @@ function raycastLocalSpace(
           .applyMatrix3(new THREE.Matrix3().getNormalMatrix(invGroupMatrix))
           .normalize();
         if (!best || h.distance < best.dist) {
-          best = { dist: h.distance, mesh, point: localPoint, faceNormal: localNormal };
+          best = { dist: h.distance, mesh, point: localPoint, worldPoint, faceNormal: localNormal };
         }
       }
     } else {
@@ -274,11 +416,14 @@ function raycastLocalSpace(
 
       if (hits.length > 0) {
         const h = hits[0];
+        const localPt = h.point.clone(); // already local (identity trick)
+        const worldPt = localPt.clone().applyMatrix4(groupWorldMatrix);
         if (!best || h.distance < best.dist) {
           best = {
             dist: h.distance,
             mesh,
-            point: h.point.clone(),         // already in local space
+            point: localPt,
+            worldPoint: worldPt,
             faceNormal: h.face!.normal.clone().normalize(),
           };
         }
@@ -287,7 +432,7 @@ function raycastLocalSpace(
   }
 
   if (!best) return null;
-  return { mesh: best.mesh, point: best.point, faceNormal: best.faceNormal, distance: best.dist };
+  return { mesh: best.mesh, point: best.point, worldPoint: best.worldPoint, faceNormal: best.faceNormal, distance: best.dist };
 }
 
 
@@ -366,65 +511,30 @@ export default function DecalZone({
         ` distance from aim point: ${hit.distance.toFixed(2)}`
       );
 
+      // Orientation derived from the raycast face normal — correct per-zone surface direction.
       const orientation = normalToEuler(hit.faceNormal);
 
-      // Project a decal patch onto the real mesh surface at `factor` × the zone
-      // size. Returns null when the projection produces nothing usable.
-      const projectDecal = (factor: number): THREE.BufferGeometry | null => {
-        try {
-          const geo = new DecalGeometry(
-            hit.mesh,
-            hit.point,
-            orientation,
-            new THREE.Vector3(w * tier.scale * factor, h * tier.scale * factor, 0.04) // projector depth
-          );
-          if (!geo.attributes.position || geo.attributes.position.count === 0) {
-            geo.dispose();
-            return null;
-          }
-          return geo;
-        } catch (err) {
-          console.warn(`[${zone.key}] DecalGeometry (scale ${factor}) threw:`, err);
-          return null;
-        }
-      };
-
-      /** Surface-aligned flat plane at the hit point, used when projection fails. */
-      const surfacePlane = (factor: number): THREE.BufferGeometry => {
+      // Surface-aligned clean rectangular plane at the hit point.
+      // Pushed 3mm along the face normal so it sits flush on the surface without z-fighting.
+      const SURFACE_OFFSET = 0.003;
+      const surfacePlane = (factor: number, extraNormalOffset = 0): THREE.BufferGeometry => {
         const geo = new THREE.PlaneGeometry(
           w * tier.scale * factor,
           h * tier.scale * factor
         );
         geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(orientation));
-        geo.translate(hit.point.x, hit.point.y, hit.point.z);
+        // Offset slightly outward along the face normal to sit flush on the surface
+        const offsetPt = hit.point.clone().addScaledVector(hit.faceNormal, SURFACE_OFFSET + extraNormalOffset);
+        geo.translate(offsetPt.x, offsetPt.y, offsetPt.z);
         return geo;
       };
 
-      // DecalGeometry (Approach A): projects geometry onto actual mesh surface.
-      // Temporarily set matrixWorld to identity so DecalGeometry operates in local space.
-      const savedMW = hit.mesh.matrixWorld.clone();
-      const savedNM = new THREE.Matrix3().copy(hit.mesh.normalMatrix);
-      hit.mesh.matrixWorld.identity();
-      hit.mesh.normalMatrix.identity();
-
-      const fillGeo = projectDecal(1);
-      if (fillGeo) {
-        newGeo = fillGeo;
-        // The logo is inset (LOGO_INSET) so it sits inside the patch rather than
-        // covering it edge to edge. If the smaller projection yields nothing,
-        // the un-inset patch is a better result than no logo at all.
-        if (needsLogo) newLogoGeo = projectDecal(LOGO_INSET) ?? fillGeo;
-      } else {
-        // DecalGeometry can throw on degenerate meshes — use an oriented plane.
-        console.warn(
-          `[${zone.key}] DecalGeometry unavailable — using surface-aligned flat plane fallback`
-        );
-        newGeo = surfacePlane(1);
-        if (needsLogo) newLogoGeo = surfacePlane(LOGO_INSET);
+      // Both spot patch and brand logo use clean, fixed rectangular planes
+      // attached flush to the mesh surface at the hit point.
+      newGeo = surfacePlane(1, 0);
+      if (needsLogo) {
+        newLogoGeo = surfacePlane(LOGO_INSET, 0.001);
       }
-
-      hit.mesh.matrixWorld.copy(savedMW);
-      hit.mesh.normalMatrix.copy(savedNM);
 
       hitPoint  = hit.point;
       hitNormal = hit.faceNormal;
@@ -434,12 +544,27 @@ export default function DecalZone({
       console.warn(
         `[${zone.key}] RAYCAST MISS — reason: no surface intersection found along ray from origin (${rayOrigin.toArray().map(v=>v.toFixed(2)).join(",")}) dir (${rayDir.toArray().map(v=>v.toFixed(2)).join(",")}) — using estimated fallback`
       );
-      newGeo = new THREE.PlaneGeometry(w * tier.scale, h * tier.scale);
-      if (needsLogo) {
-        newLogoGeo = new THREE.PlaneGeometry(
-          w * tier.scale * LOGO_INSET,
-          h * tier.scale * LOGO_INSET
+
+      // FIX: Derive rotation from the zone's DB normal, not a crude anchor.x heuristic.
+      // For arm zones with normal=(1,0,0) the plane must face outward, not forward.
+      // Push the anchor 3mm outward along the zone normal so it sits on (not in) the body.
+      const FALLBACK_OFFSET = 0.003;
+      const fallbackOrientation = normalToEuler(aimNorm);
+      const fallbackEuler = fallbackOrientation;
+      const buildFallbackPlane = (factor: number): THREE.BufferGeometry => {
+        const geo = new THREE.PlaneGeometry(
+          w * tier.scale * factor,
+          h * tier.scale * factor
         );
+        geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(fallbackEuler));
+        const anchor = aimPt.clone().addScaledVector(aimNorm, FALLBACK_OFFSET);
+        geo.translate(anchor.x, anchor.y, anchor.z);
+        return geo;
+      };
+
+      newGeo = buildFallbackPlane(1);
+      if (needsLogo) {
+        newLogoGeo = buildFallbackPlane(LOGO_INSET);
       }
     }
 
@@ -524,39 +649,34 @@ export default function DecalZone({
   const emissiveColor = isOccupied ? 0x113300 : (hovered ? 0x00d4ff : 0x000000);
   const emissiveIntensity = isOccupied ? 0.6 : (hovered ? 0.25 : 0.0);
 
-  // DecalGeometry vertices ARE the position — no extra group position/rotation needed.
-  // Fallback plane uses the original anchor + heuristic rotation.
+  // DecalGeometry vertices carry their own world position — no extra transform needed.
+  // Fallback plane geometry is already positioned/rotated by buildFallbackPlane.
+  // In both cases the mesh gets NO position/rotation props (they are baked into the geometry).
   const isFallback = result.type === "fallback";
-  const fallbackPos: [number, number, number] = [zone.anchor.x, zone.anchor.y, zone.anchor.z];
-  const fallbackRot: [number, number, number] = (() => {
-    if (
-      zone.anchor.z < -0.05 ||
-      zone.key.includes("back") ||
-      zone.key.includes("rear") ||
-      zone.key.includes("glute")
-    ) {
-      return [0, Math.PI, 0];
-    }
-    if (zone.anchor.x > 0.25)  return [0,  Math.PI * 0.18, 0];
-    if (zone.anchor.x < -0.25) return [0, -Math.PI * 0.18, 0];
-    return [0, 0, 0];
-  })();
 
-  // Dashed border position/orientation: flush on surface with 2mm normal offset
+  // Dashed border position/orientation: flush on surface with 2mm normal offset.
+  // For fallback (no hit), use the anchor pushed outward along the zone normal.
+  const rawNormFB = zone.normal ?? { x: 0, y: 0, z: 1 };
+  const aimNormFB = new THREE.Vector3(rawNormFB.x, rawNormFB.y, rawNormFB.z).normalize();
+
   const borderPos: [number, number, number] = result.hitPoint && result.hitNormal
     ? [
         result.hitPoint.x + result.hitNormal.x * 0.002,
         result.hitPoint.y + result.hitNormal.y * 0.002,
         result.hitPoint.z + result.hitNormal.z * 0.002,
       ]
-    : fallbackPos;
+    : [
+        zone.anchor.x + aimNormFB.x * 0.003,
+        zone.anchor.y + aimNormFB.y * 0.003,
+        zone.anchor.z + aimNormFB.z * 0.003,
+      ];
 
-  const borderRot: [number, number, number] = result.hitNormal
-    ? (() => {
-        const e = normalToEuler(result.hitNormal);
-        return [e.x, e.y, e.z];
-      })()
-    : fallbackRot;
+  // Border rotation from hit normal (accurate) or zone DB normal (fallback).
+  const borderRot: [number, number, number] = (() => {
+    const n = result.hitNormal ?? aimNormFB;
+    const e = normalToEuler(n);
+    return [e.x, e.y, e.z];
+  })();
 
   // Debug label position: just above the hit/fallback point
   const labelPos: [number, number, number] = result.hitPoint
@@ -569,11 +689,11 @@ export default function DecalZone({
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { setHovered(false); document.body.style.cursor = "default"; }}
     >
-      {/* Clickable decal surface — drawn before the logo so the logo layers on top */}
+      {/* Clickable decal surface — drawn before the logo so the logo layers on top.
+          Both decal and fallback geometries have position/rotation baked in, so
+          no mesh-level position/rotation prop is needed in either case. */}
       <mesh
         geometry={result.geometry}
-        position={isFallback ? fallbackPos : undefined}
-        rotation={isFallback ? fallbackRot : undefined}
         renderOrder={1}
       >
         <meshStandardMaterial
@@ -597,8 +717,8 @@ export default function DecalZone({
         <ZoneLogoDecal
           url={zone.placement.brandLogoUrl}
           geometry={result.logoGeometry}
-          position={isFallback ? fallbackPos : undefined}
-          rotation={isFallback ? fallbackRot : undefined}
+          zoneWidth={w * tier.scale * LOGO_INSET}
+          zoneHeight={h * tier.scale * LOGO_INSET}
         />
       )}
 

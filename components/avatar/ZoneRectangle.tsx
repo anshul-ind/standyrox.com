@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import * as THREE from "three";
 import { Html, useTexture } from "@react-three/drei";
 import { formatUSDFromCents } from "@/lib/format";
@@ -59,11 +59,89 @@ const TIER_COLORS: Record<
 };
 
 function LogoPlane({ url, width, height }: { url: string; width: number; height: number }) {
-  const texture = useTexture(url);
+  const rawTexture = useTexture(url);
+
+  // ── Contain-fit: draw image onto a canvas matching the zone aspect ratio ──
+  const containedTexture = useMemo(() => {
+    const img = rawTexture?.image as
+      | (CanvasImageSource & { width: number; height: number })
+      | undefined;
+    if (
+      typeof document === "undefined" ||
+      !img || !img.width || !img.height ||
+      !isFinite(width) || width <= 0 || !isFinite(height) || height <= 0
+    ) {
+      return rawTexture;
+    }
+
+    const zoneAspect = width / height;
+    const MAX_CANVAS = 512;
+    let canvasW: number;
+    let canvasH: number;
+    if (zoneAspect >= 1) {
+      canvasW = MAX_CANVAS;
+      canvasH = Math.round(MAX_CANVAS / zoneAspect);
+    } else {
+      canvasH = MAX_CANVAS;
+      canvasW = Math.round(MAX_CANVAS * zoneAspect);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(canvasW, 1);
+    canvas.height = Math.max(canvasH, 1);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return rawTexture;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const imgAspect = img.width / img.height;
+    let drawW: number;
+    let drawH: number;
+    if (imgAspect > zoneAspect) {
+      drawW = canvas.width;
+      drawH = canvas.width / imgAspect;
+    } else if (imgAspect < zoneAspect) {
+      drawH = canvas.height;
+      drawW = canvas.height * imgAspect;
+    } else {
+      drawW = canvas.width;
+      drawH = canvas.height;
+    }
+
+    const x = (canvas.width - drawW) / 2;
+    const y = (canvas.height - drawH) / 2;
+
+    try {
+      ctx.drawImage(img, x, y, drawW, drawH);
+    } catch {
+      return rawTexture;
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    return tex;
+  }, [rawTexture, width, height]);
+
+  // Dispose canvas texture on cleanup
+  useEffect(() => {
+    return () => {
+      if (containedTexture !== rawTexture) {
+        containedTexture.dispose();
+      }
+    };
+  }, [containedTexture, rawTexture]);
+
+  // The contained canvas texture already has the correct aspect ratio baked
+  // in, so the plane just needs to be the full zone size.  The texture maps
+  // across the plane with the image centred and letter-/pillar-boxed.
+  const planeW = width * 0.85;
+  const planeH = height * 0.85;
+
   return (
     <mesh position={[0, 0, 0.002]}>
-      <planeGeometry args={[width * 0.85, height * 0.85]} />
-      <meshBasicMaterial map={texture} transparent side={THREE.DoubleSide} />
+      <planeGeometry args={[Math.max(planeW, 0.001), Math.max(planeH, 0.001)]} />
+      <meshBasicMaterial map={containedTexture} transparent side={THREE.DoubleSide} />
     </mesh>
   );
 }

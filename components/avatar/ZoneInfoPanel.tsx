@@ -113,7 +113,7 @@ export default function ZoneInfoPanel({
                   <img
                     src={zone.placement.brandLogoUrl}
                     alt={zone.placement.brandName}
-                    className="h-16 w-16 rounded-xl object-cover border border-white/10 shadow-lg"
+                    className="h-16 w-16 rounded-xl object-contain border border-white/10 shadow-lg"
                   />
                 </div>
               )}
