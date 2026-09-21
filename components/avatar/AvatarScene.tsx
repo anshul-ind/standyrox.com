@@ -120,6 +120,12 @@ function FloatingAvatarGroup({
   const [avatarScene, setAvatarScene] = useState<THREE.Group | null>(null);
   const [groupWorldMatrix, setGroupWorldMatrix] = useState<THREE.Matrix4 | null>(null);
   const matrixCapturedRef = useRef(false);
+  // Counts frames after avatarScene becomes available.
+  // We wait ≥2 frames so position.y = baseY has been written AND fully propagated
+  // through the scene graph before we snapshot the world matrix.
+  // Without this guard, a cached-GLB refresh resolves synchronously and the matrix
+  // is captured at position.y = 0 (React default) → all zone decals shift downward.
+  const matrixSettleFramesRef = useRef(0);
 
   const handleMeasured = useCallback(
     (dims: ModelDimensions) => {
@@ -129,6 +135,10 @@ function FloatingAvatarGroup({
   );
 
   const handleSceneReady = useCallback((scene: THREE.Group) => {
+    // Reset settle counter whenever avatarScene is (re)assigned so a new GLB
+    // mount always re-captures a fresh, correct world matrix.
+    matrixCapturedRef.current = false;
+    matrixSettleFramesRef.current = 0;
     setAvatarScene(scene);
   }, []);
 
@@ -140,10 +150,18 @@ function FloatingAvatarGroup({
   }, [baseY, onBaseYReady]);
 
   useFrame(() => {
-    if (groupRef.current) {
-      groupRef.current.position.y = baseY;
+    if (!groupRef.current) return;
 
-      if (avatarScene && !matrixCapturedRef.current) {
+    // Step 1: always write the correct Y first — before any matrix work.
+    groupRef.current.position.y = baseY;
+
+    if (avatarScene && !matrixCapturedRef.current) {
+      matrixSettleFramesRef.current += 1;
+
+      // Step 2: wait 2 frames for the transform to fully propagate through the
+      // scene graph. On frame 1 the write above is new; by frame 2 the parent
+      // matrixWorld has been recalculated and the snapshot will be correct.
+      if (matrixSettleFramesRef.current >= 2) {
         matrixCapturedRef.current = true;
         groupRef.current.updateMatrixWorld(true);
         setGroupWorldMatrix(groupRef.current.matrixWorld.clone());
