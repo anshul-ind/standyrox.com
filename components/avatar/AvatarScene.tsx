@@ -16,8 +16,10 @@ import type { ZoneData } from "./ZoneRectangle";
 
 import TunnelPortalBackground from "./TunnelPortalBackground";
 
-// ─── Platform constants ────────────────────────────────────────────────────────
+// ─── Platform & Grounding constants ──────────────────────────────────────────
 const PLATFORM_TOP_Y = 0.07;
+// Single source of truth: Platform top (0.070) - feetY (-0.0071) + 0.010 clearance
+export const AVATAR_GROUND_BASE_Y = 0.0871;
 
 // ─── Arena Lighting (Theme-reactive) ──────────────────────────────────────────
 function ArenaLighting() {
@@ -42,8 +44,8 @@ function ArenaLighting() {
       {/* Front Mid Fill */}
       <directionalLight position={[0, 1.5, 3.2]} intensity={0.8} color="#dbeafe" />
 
-      {/* Front Lower Shoe / Floor Fill Light — softened to prevent specular blowout on floor */}
-      <directionalLight position={[0, 0.45, 2.6]} intensity={0.55} color="#f0f9ff" />
+      {/* Front Lower Shoe / Floor Fill Light — balanced for white sneaker crispness */}
+      <directionalLight position={[0, 0.45, 2.6]} intensity={0.65} color="#f0f9ff" />
 
       {/* Back Key Light — mirrored to provide equal lighting on rear view */}
       <directionalLight
@@ -54,15 +56,18 @@ function ArenaLighting() {
       {/* Back Mid Fill */}
       <directionalLight position={[0, 1.5, -3.2]} intensity={0.75} color="#dbeafe" />
 
-      {/* Back Lower Shoe / Floor Fill Light — softened */}
-      <directionalLight position={[0, 0.45, -2.6]} intensity={0.50} color="#f0f9ff" />
+      {/* Back Lower Shoe / Floor Fill Light */}
+      <directionalLight position={[0, 0.45, -2.6]} intensity={0.55} color="#f0f9ff" />
 
-      {/* Dedicated Shoe / Foot Rim Point Lights — balanced to define shoe contours */}
-      <pointLight position={[0, 0.28, 1.4]} color="#ffffff" intensity={0.65} distance={3.2} />
-      <pointLight position={[0, 0.28, -1.4]} color="#ffffff" intensity={0.55} distance={3.2} />
+      {/* Dedicated Shoe / Foot Rim Point Lights — defines shoe profile and laces */}
+      <pointLight position={[0, 0.28, 1.4]} color="#ffffff" intensity={0.70} distance={3.2} />
+      <pointLight position={[0, 0.28, -1.4]} color="#ffffff" intensity={0.60} distance={3.2} />
+
+      {/* Forward Floor Accent Light — produces the sleek forward cyber glow seen in Reference Image 2 */}
+      <pointLight position={[0, 0.08, 0.55]} color={colors.primaryHex} intensity={0.9} distance={2.5} />
 
       {/* Room ambient light */}
-      <ambientLight color="#0c1828" intensity={0.95} />
+      <ambientLight color="#0c1828" intensity={1.10} />
 
       {/* 360° Rim Point Lights (Theme-Reactive Neon) */}
       <pointLight position={[-3.2, 2.0, 0.2]} color={colors.primaryHex} intensity={2.0} distance={10} />
@@ -70,80 +75,23 @@ function ArenaLighting() {
       <pointLight position={[-2.4, 2.2, -2.4]} color={colors.primaryHex} intensity={1.6} distance={8} />
       <pointLight position={[2.4, 2.2, -2.4]} color={colors.primaryHex} intensity={1.6} distance={8} />
 
-      {/* Platform ground under-glow — positioned at podium base to avoid flaring at ankles */}
+      {/* Platform ground under-glow — positioned at podium base */}
       <pointLight position={[0, 0.015, 0]} color={colors.primaryHex} intensity={0.8} distance={2.2} />
     </>
   );
 }
 
-// ─── Sleek Platform Ring (Theme-reactive) ─────────────────────────────────────
+// ─── Sleek Platform Ring (Theme-reactive — Matching Reference Image 2) ────────
 function ArenaPlatform() {
-  const { theme, colors } = useTheme();
-  const isRed = theme === "red";
-
-  // Top platform dark obsidian texture with subtle theme rim vignette
-  const topDiscTex = useMemo(() => {
-    if (typeof document === "undefined") return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 512; canvas.height = 512;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    const grad = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
-    // Center is pure pitch-black cyber obsidian so sneakers always pop with max contrast
-    grad.addColorStop(0, "#010306");
-    grad.addColorStop(0.65, "#030710");
-    if (isRed) {
-      grad.addColorStop(0.92, "#1a0408");
-      grad.addColorStop(1.0, "#2c060e");
-    } else {
-      grad.addColorStop(0.92, "#041424");
-      grad.addColorStop(1.0, "#062038");
-    }
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 512, 512);
-    return new THREE.CanvasTexture(canvas);
-  }, [isRed]);
-
-  // Soft ambient occlusion contact shadow directly underneath the avatar's shoes
-  const contactShadowTex = useMemo(() => {
-    if (typeof document === "undefined") return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = 256; canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, "rgba(0, 0, 0, 0.75)");
-    grad.addColorStop(0.45, "rgba(0, 0, 0, 0.40)");
-    grad.addColorStop(0.80, "rgba(0, 0, 0, 0.10)");
-    grad.addColorStop(1.0, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 256, 256);
-    return new THREE.CanvasTexture(canvas);
-  }, []);
+  const { colors } = useTheme();
 
   return (
     <group>
-      {/* Base cylinder — center at Y=0.035, top at Y=0.07, radius 1.22m */}
+      {/* Base cylinder — center at Y=0.035, top at Y=0.07, radius 1.22m (Sleek dark metallic cyber finish) */}
       <mesh position={[0, 0.035, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[1.22, 1.25, 0.07, 64]} />
-        <meshStandardMaterial color="#040912" metalness={0.15} roughness={0.65} />
+        <meshStandardMaterial color="#06101e" metalness={0.42} roughness={0.40} />
       </mesh>
-
-      {/* Top standing disc — deep obsidian non-reflective surface */}
-      {topDiscTex && (
-        <mesh position={[0, PLATFORM_TOP_Y + 0.0003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[1.21, 64]} />
-          <meshBasicMaterial map={topDiscTex} />
-        </mesh>
-      )}
-
-      {/* Foot contact shadow — grounds the sneakers to the platform floor */}
-      {contactShadowTex && (
-        <mesh position={[0, PLATFORM_TOP_Y + 0.0006, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[0.48, 32]} />
-          <meshBasicMaterial map={contactShadowTex} transparent depthWrite={false} opacity={0.88} />
-        </mesh>
-      )}
 
       {/* Outer bright edge ring (Theme Colored) */}
       <mesh position={[0, PLATFORM_TOP_Y, 0]} rotation={[Math.PI / 2, 0, 0]}>
@@ -173,17 +121,8 @@ function FloatingAvatarGroup({
   const [groupWorldMatrix, setGroupWorldMatrix] = useState<THREE.Matrix4 | null>(null);
   const matrixCapturedRef = useRef(false);
 
-  const [dimensions, setDimensions] = useState<ModelDimensions>({
-    modelHeight: 1.8896,
-    modelWidth:  1.827,
-    modelDepth:  0.3848,
-    feetY:       -0.0071,
-    centerX:     0,
-  });
-
   const handleMeasured = useCallback(
     (dims: ModelDimensions) => {
-      setDimensions(dims);
       onDimensionsMeasured?.(dims);
     },
     [onDimensionsMeasured]
@@ -193,8 +132,8 @@ function FloatingAvatarGroup({
     setAvatarScene(scene);
   }, []);
 
-  // Floor-touch grounding: elevate sneaker soles cleanly onto the platform top
-  const baseY = PLATFORM_TOP_Y - dimensions.feetY + 0.0055;
+  // Deterministic ground elevation: single source of truth across all refreshes
+  const baseY = AVATAR_GROUND_BASE_Y;
 
   useEffect(() => {
     onBaseYReady?.(baseY);
@@ -393,7 +332,7 @@ export default function AvatarScene({
   onDimensionsMeasured?: (dims: ModelDimensions) => void;
 }) {
   const { colors } = useTheme();
-  const [baseY, setBaseY] = useState(0.1169);
+  const [baseY, setBaseY] = useState(AVATAR_GROUND_BASE_Y);
 
   return (
     <Canvas
