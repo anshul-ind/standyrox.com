@@ -328,7 +328,7 @@ function SceneCameraControls({
       enablePan={false}
       enableZoom={true}
       autoRotate={!selectedZone}
-      autoRotateSpeed={-1.2}
+      autoRotateSpeed={-0.45}
       dampingFactor={0.07}
       onStart={() => {
         // User manual drag takes immediate priority over automatic transition
