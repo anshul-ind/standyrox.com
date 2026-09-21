@@ -8,8 +8,11 @@ import ZoneInfoPanel from "@/components/avatar/ZoneInfoPanel";
 import type { ZoneDetail } from "@/components/avatar/ZoneInfoPanel";
 import ZoneTuner from "@/components/avatar/ZoneTuner";
 import ErrorBoundary from "@/components/ui/error-boundary";
+import { ThemeProvider, useTheme } from "@/lib/theme-context";
+import AudioController, { playSoundFX } from "@/components/ui/AudioController";
 
-export default function Home() {
+function HomeContent() {
+  const { theme, colors, toggleTheme } = useTheme();
   const [zones, setZones] = useState<ZoneData[]>([]);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -17,6 +20,8 @@ export default function Home() {
   const [showDebug, setShowDebug] = useState(false);
   const [selectedZone, setSelectedZone] = useState<ZoneDetail | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const isRed = theme === "red";
 
   // Fetch zones on mount (and on Retry)
   useEffect(() => {
@@ -81,42 +86,94 @@ export default function Home() {
     setZones((prev) => prev.map((z) => (z.id === updated.id ? updated : z)));
   }, []);
 
+  const handleToggleTheme = () => {
+    playSoundFX("toggle");
+    toggleTheme();
+  };
+
   return (
-    <main className="flex min-h-screen flex-col text-amber-50" style={{ background: '#050c1a' }}>
+    <main
+      className="flex min-h-screen flex-col text-amber-50 transition-colors duration-500"
+      style={{ background: colors.bgDark }}
+    >
       {/* ── Header ── */}
-      <header className="flex items-center justify-between border-b border-cyan-900/40 px-6 py-3" style={{ background: 'rgba(5,12,26,0.92)', backdropFilter: 'blur(8px)' }}>
-        <div className="flex items-center gap-3">
-          <span className="text-[12px] font-bold tracking-[0.32em] uppercase" style={{ color: '#00d4ff', textShadow: '0 0 12px rgba(0,212,255,0.5)' }}>
-            Stand Out
-          </span>
-          <span className="text-cyan-900">|</span>
-          <span className="text-sm text-slate-400 tracking-wide">
-            Avatar Ad-Zone Marketplace
-          </span>
+      <header
+        className="flex items-center justify-between border-b px-6 py-3 transition-colors duration-500"
+        style={{
+          background: isRed ? "rgba(18, 4, 7, 0.94)" : "rgba(5, 12, 26, 0.94)",
+          borderColor: isRed ? "rgba(255, 42, 85, 0.25)" : "rgba(0, 212, 255, 0.25)",
+          backdropFilter: "blur(12px)",
+        }}
+      >
+        {/* Left Side: Brand Logo + Theme Toggle */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="text-[13px] font-bold tracking-[0.35em] uppercase transition-colors duration-500"
+              style={{
+                color: colors.primary,
+                textShadow: `0 0 14px ${colors.primaryGlow}`,
+              }}
+            >
+              Stand Out
+            </span>
+            <span className="text-zinc-700">|</span>
+            <span className="hidden sm:inline text-xs text-zinc-400 font-mono tracking-wider">
+              3D Avatar Ad-Zone
+            </span>
+          </div>
+
+          {/* Theme Toggle Button in Top-Left */}
+          <button
+            type="button"
+            onClick={handleToggleTheme}
+            title="Toggle Cyan / Red Theme"
+            className={`group flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] font-semibold transition-all duration-300 ${
+              isRed
+                ? "border-rose-500/50 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 shadow-[0_0_15px_rgba(255,42,85,0.25)]"
+                : "border-cyan-400/50 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20 shadow-[0_0_15px_rgba(0,212,255,0.25)]"
+            }`}
+          >
+            <span
+              className={`h-2 w-2 rounded-full transition-all duration-300 ${
+                isRed ? "bg-rose-500 shadow-[0_0_8px_#ff2a55]" : "bg-cyan-400 shadow-[0_0_8px_#00d4ff]"
+              }`}
+            />
+            <span>{isRed ? "THEME: RED" : "THEME: CYAN"}</span>
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowDebug((prev) => !prev)}
-          className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${
-            showDebug
-              ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-300"
-              : "border-cyan-900/50 bg-slate-900/60 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Debug: {showDebug ? "ON" : "OFF"}{" "}
-          <span className="text-slate-600">(Ctrl+D)</span>
-        </button>
+
+        {/* Right Side: Audio Controller + Debug Switch */}
+        <div className="flex items-center gap-3">
+          <AudioController />
+
+          <button
+            type="button"
+            onClick={() => setShowDebug((prev) => !prev)}
+            className={`rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${
+              showDebug
+                ? isRed
+                  ? "border-rose-400/60 bg-rose-400/15 text-rose-300"
+                  : "border-cyan-400/60 bg-cyan-400/15 text-cyan-300"
+                : "border-white/10 bg-slate-900/60 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Debug: {showDebug ? "ON" : "OFF"}{" "}
+            <span className="text-zinc-500 hidden sm:inline">(Ctrl+D)</span>
+          </button>
+        </div>
       </header>
 
       {/* ── 3D Scene ── */}
       <div className="relative flex-1" style={{ minHeight: "80vh" }}>
-        {/* Background glow */}
+        {/* Ambient background glow */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-0"
+          className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-700"
           style={{
-            background:
-              "radial-gradient(ellipse 60% 40% at 50% 50%, rgba(180,140,30,0.05) 0%, transparent 70%)",
+            background: isRed
+              ? "radial-gradient(ellipse 60% 40% at 50% 50%, rgba(255,42,85,0.06) 0%, transparent 70%)"
+              : "radial-gradient(ellipse 60% 40% at 50% 50%, rgba(0,212,255,0.06) 0%, transparent 70%)",
           }}
         />
 
@@ -150,6 +207,7 @@ export default function Home() {
               <AvatarScene
                 zones={zones}
                 onSelectZone={handleSelectZone}
+                selectedZone={selectedZone}
                 showDebugLabel={showDebug}
               />
             </ErrorBoundary>
@@ -157,7 +215,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ── Zone Info Panel ── */}
+      {/* ── Zone Info Panel / Glass Brand Card ── */}
       <ZoneInfoPanel zone={selectedZone} onClose={handleClosePanel} />
 
       {/* ── Zone Tuner Calibration Tool ── */}
@@ -170,14 +228,27 @@ export default function Home() {
       )}
 
       {/* ── Footer ── */}
-      <footer className="flex items-center justify-between border-t border-cyan-900/30 px-6 py-3 font-mono text-[11px]" style={{ background: 'rgba(5,12,26,0.92)', color: '#3a6070' }}>
-        <span>Drag to rotate · Scroll to zoom · Click zones to inspect</span>
-        <span style={{ color: '#1e4455' }}>
-          {zones.length > 0
-            ? `${zones.length} zones · ${glbUrl ?? "—"}`
-            : "—"}
+      <footer
+        className="flex items-center justify-between border-t px-6 py-3 font-mono text-[11px] transition-colors duration-500"
+        style={{
+          background: isRed ? "rgba(18, 4, 7, 0.94)" : "rgba(5, 12, 26, 0.94)",
+          borderColor: isRed ? "rgba(255, 42, 85, 0.2)" : "rgba(0, 212, 255, 0.2)",
+          color: isRed ? "#8a3545" : "#3a6070",
+        }}
+      >
+        <span>Drag left/right to rotate 360° · Scroll to zoom · Click spots for 3D camera focus</span>
+        <span style={{ color: isRed ? "#6a2535" : "#1e4455" }}>
+          {zones.length > 0 ? `${zones.length} zones active` : "—"}
         </span>
       </footer>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <ThemeProvider>
+      <HomeContent />
+    </ThemeProvider>
   );
 }

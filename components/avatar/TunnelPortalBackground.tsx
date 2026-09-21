@@ -2,22 +2,15 @@
  * TunnelPortalBackground.tsx
  *
  * Drop-in R3F background replacing the old spotlight-beam rig.
- * Render this as a sibling inside your <Canvas>, alongside the avatar group —
- * do NOT nest it under the avatar or camera, so it stays fixed in world space
- * and never rotates with OrbitControls or the avatar's own transform.
+ * Dynamically switches between Cyan Cyberpunk and Crimson/Red themes.
  */
+
+"use client";
 
 import * as React from "react";
 import { useMemo } from "react";
 import * as THREE from "three";
-
-// ---------- shared colors ----------
-const SKY_EDGE = new THREE.Color(0x040911);
-const SKY_MID = new THREE.Color(0x0a1420);
-const CYAN = 0x25c9e8;
-const GRID_CYAN = 0x1bb8d6;
-const PILLAR_COLOR = 0x050708;
-const PANEL_FILL = 0x081119;
+import { useTheme } from "@/lib/theme-context";
 
 // ---------- glow-line helpers (fake neon: core + additive halo, no post-fx needed) ----------
 function addGlowSegment(
@@ -98,13 +91,13 @@ function octagonGatePoints(w: number, h: number, chamfer: number): THREE.Vector3
 }
 
 // ---------- 1. Gradient sky ----------
-function GradientSky() {
+function GradientSky({ skyEdge, skyMid }: { skyEdge: THREE.Color; skyMid: THREE.Color }) {
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
         uniforms: {
-          colorEdge: { value: SKY_EDGE },
-          colorMid: { value: SKY_MID },
+          colorEdge: { value: skyEdge },
+          colorMid: { value: skyMid },
           radius: { value: 90 },
         },
         vertexShader: `
@@ -128,7 +121,7 @@ function GradientSky() {
         side: THREE.BackSide,
         depthWrite: false,
       }),
-    []
+    [skyEdge, skyMid]
   );
 
   return (
@@ -139,7 +132,7 @@ function GradientSky() {
 }
 
 // ---------- background particles ----------
-function BackgroundParticles({ count = 220 }: { count?: number }) {
+function BackgroundParticles({ count = 220, particleColor }: { count?: number; particleColor: number }) {
   const geometry = useMemo(() => {
     const positions = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
@@ -161,10 +154,10 @@ function BackgroundParticles({ count = 220 }: { count?: number }) {
   return (
     <points geometry={geometry}>
       <pointsMaterial
-        color={0xffffff}
+        color={particleColor}
         size={0.14}
         transparent
-        opacity={0.2}
+        opacity={0.25}
         sizeAttenuation
         depthWrite={false}
       />
@@ -173,16 +166,16 @@ function BackgroundParticles({ count = 220 }: { count?: number }) {
 }
 
 // ---------- 2. Floor grid ----------
-function FloorGrid() {
+function FloorGrid({ gridColor }: { gridColor: number }) {
   const grid = useMemo(() => {
-    const g = new THREE.GridHelper(60, 60, GRID_CYAN, GRID_CYAN);
+    const g = new THREE.GridHelper(60, 60, gridColor, gridColor);
     const mats = Array.isArray(g.material) ? g.material : [g.material];
     mats.forEach((m) => {
       m.transparent = true;
       m.opacity = 0.28;
     });
     return g;
-  }, []);
+  }, [gridColor]);
 
   return <primitive object={grid} position={[0, 0, 0]} />;
 }
@@ -199,8 +192,9 @@ const PILLAR_DATA = [
 ];
 const PILLAR_W = 0.55;
 const PILLAR_D = 0.55;
+const PILLAR_COLOR = 0x050708;
 
-function Pillars() {
+function Pillars({ neonColor }: { neonColor: number }) {
   const group = useMemo(() => {
     const g = new THREE.Group();
     const pillarMat = new THREE.MeshBasicMaterial({ color: PILLAR_COLOR });
@@ -219,13 +213,13 @@ function Pillars() {
         g,
         [new THREE.Vector3(ex, 0, ez), new THREE.Vector3(ex, p.h, ez)],
         0.018,
-        CYAN,
+        neonColor,
         false
       );
     });
 
     return g;
-  }, []);
+  }, [neonColor]);
 
   return <primitive object={group} />;
 }
@@ -241,7 +235,7 @@ const BASE_W = 6.2;
 const BASE_H = 7.2;
 const BASE_CHAMFER = 1.7;
 
-function TunnelRings() {
+function TunnelRings({ neonColor }: { neonColor: number }) {
   const group = useMemo(() => {
     const g = new THREE.Group();
     RING_CONFIGS.forEach((cfg) => {
@@ -251,17 +245,16 @@ function TunnelRings() {
         BASE_CHAMFER * cfg.scale
       );
       const pts = pts2D.map((v) => new THREE.Vector3(v.x, v.y, cfg.z));
-      addGlowPolyline(g, pts, 0.03, CYAN, false);
+      addGlowPolyline(g, pts, 0.03, neonColor, false);
     });
     return g;
-  }, []);
+  }, [neonColor]);
 
-  // scene-root child (not parented to avatar/camera) => stays fixed during orbit
   return <primitive object={group} />;
 }
 
-// ---------- 5. Floating screen panel (placeholder, static in world space) ----------
-function FloatingScreenPanel() {
+// ---------- 5. Floating screen panel ----------
+function FloatingScreenPanel({ neonColor, panelFill }: { neonColor: number; panelFill: number }) {
   const group = useMemo(() => {
     const g = new THREE.Group();
     const panelW = 1.9;
@@ -270,7 +263,7 @@ function FloatingScreenPanel() {
 
     const fill = new THREE.Mesh(
       new THREE.PlaneGeometry(panelW, panelH),
-      new THREE.MeshBasicMaterial({ color: PANEL_FILL, transparent: true, opacity: 0.85 })
+      new THREE.MeshBasicMaterial({ color: panelFill, transparent: true, opacity: 0.85 })
     );
     fill.position.copy(center);
     g.add(fill);
@@ -288,25 +281,30 @@ function FloatingScreenPanel() {
       new THREE.Vector3(center.x - hw, center.y + hh - corner, center.z),
       new THREE.Vector3(center.x - hw, center.y - hh + corner, center.z),
     ];
-    addGlowPolyline(g, borderPts, 0.014, CYAN, true);
+    addGlowPolyline(g, borderPts, 0.014, neonColor, true);
 
     return g;
-  }, []);
+  }, [neonColor, panelFill]);
 
   return <primitive object={group} />;
 }
 
 // ---------- main export ----------
 export default function TunnelPortalBackground() {
+  const { colors } = useTheme();
+
+  const skyEdge = useMemo(() => new THREE.Color(colors.skyEdgeHex), [colors.skyEdgeHex]);
+  const skyMid = useMemo(() => new THREE.Color(colors.skyMidHex), [colors.skyMidHex]);
+
   return (
     <group>
-      <fog attach="fog" args={[0x040911, 14, 46]} />
-      <GradientSky />
-      <BackgroundParticles />
-      <FloorGrid />
-      <Pillars />
-      <TunnelRings />
-      <FloatingScreenPanel />
+      <fog attach="fog" args={[colors.skyEdgeHex, 14, 46]} />
+      <GradientSky skyEdge={skyEdge} skyMid={skyMid} />
+      <BackgroundParticles particleColor={colors.primaryHex} />
+      <FloorGrid gridColor={colors.gridColorHex} />
+      <Pillars neonColor={colors.primaryHex} />
+      <TunnelRings neonColor={colors.primaryHex} />
+      <FloatingScreenPanel neonColor={colors.primaryHex} panelFill={parseInt(colors.bgPanel.replace("#", "0x"), 16)} />
     </group>
   );
 }

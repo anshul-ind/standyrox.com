@@ -7,6 +7,8 @@ import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
 import { Html, useTexture } from "@react-three/drei";
 import { formatUSDFromCents } from "@/lib/format";
 import type { ZoneData } from "./ZoneRectangle";
+import { useTheme } from "@/lib/theme-context";
+import { playSoundFX } from "@/components/ui/AudioController";
 
 // ─── Raycast opt-out ─────────────────────────────────────────────────────────
 //
@@ -67,10 +69,15 @@ function PulsingZoneMarker({
   tierKey: TierKey;
   hovered: boolean;
 }) {
+  const { theme, colors } = useTheme();
   const groupRef = useRef<THREE.Group>(null);
   const ringMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const coreMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const glowMatRef = useRef<THREE.MeshBasicMaterial>(null);
+
+  const isRed = theme === "red";
+  const primaryGlow = isRed ? "#ff2a55" : "#00d4ff";
+  const primaryRing = isRed ? "#ff4069" : "#00f0ff";
 
   // Animated breathing pulse via useFrame (~1.5s period)
   useFrame(({ clock }) => {
@@ -102,7 +109,7 @@ function PulsingZoneMarker({
         <circleGeometry args={[0.042, 32]} />
         <meshBasicMaterial
           ref={glowMatRef}
-          color="#00d4ff"
+          color={primaryGlow}
           transparent
           depthWrite={false}
           opacity={0.3}
@@ -114,7 +121,7 @@ function PulsingZoneMarker({
         <ringGeometry args={[0.024, 0.034, 32]} />
         <meshBasicMaterial
           ref={ringMatRef}
-          color="#00f0ff"
+          color={primaryRing}
           transparent
           depthWrite={false}
           opacity={0.85}
@@ -136,11 +143,11 @@ function PulsingZoneMarker({
       {/* Precision target crosshair lines */}
       <mesh position={[0, 0, 0.003]} raycast={NO_RAYCAST}>
         <planeGeometry args={[0.003, 0.016]} />
-        <meshBasicMaterial color="#00e5ff" transparent opacity={0.8} depthWrite={false} side={THREE.DoubleSide} />
+        <meshBasicMaterial color={primaryGlow} transparent opacity={0.8} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh position={[0, 0, 0.003]} raycast={NO_RAYCAST}>
         <planeGeometry args={[0.016, 0.003]} />
-        <meshBasicMaterial color="#00e5ff" transparent opacity={0.8} depthWrite={false} side={THREE.DoubleSide} />
+        <meshBasicMaterial color={primaryGlow} transparent opacity={0.8} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
@@ -662,6 +669,9 @@ export default function DecalZone({
   // ── Rendering ───────────────────────────────────────────────────────────────
   if (!result) return null; // decal not ready yet — no flash
 
+  const { theme, colors } = useTheme();
+  const isRed = theme === "red";
+
   // Visual styling:
   // - Unclaimed: transparent faint fill (0.04) + neutral dark dashed border
   // - Occupied with logo: clean full-cover brand logo without green border bleed
@@ -669,7 +679,7 @@ export default function DecalZone({
   const hasLogo = Boolean(isOccupied && zone.placement?.brandLogoUrl);
   const fillColor = isOccupied ? (hasLogo ? 0x050c18 : 0x22c55e) : 0x050c18;
   const fillOpacity = isOccupied ? (hasLogo ? 0.0 : 0.95) : (hovered ? 0.12 : 0.04);
-  const emissiveColor = isOccupied ? (hasLogo ? 0x000000 : 0x113300) : (hovered ? 0x00d4ff : 0x000000);
+  const emissiveColor = isOccupied ? (hasLogo ? 0x000000 : 0x113300) : (hovered ? colors.primaryHex : 0x000000);
   const emissiveIntensity = isOccupied ? (hasLogo ? 0.0 : 0.6) : (hovered ? 0.25 : 0.0);
 
   // DecalGeometry vertices carry their own world position — no extra transform needed.
@@ -708,7 +718,11 @@ export default function DecalZone({
 
   return (
     <group
-      onClick={(e) => { e.stopPropagation(); onSelect(zone.id); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        playSoundFX("select");
+        onSelect(zone.id);
+      }}
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { setHovered(false); document.body.style.cursor = "default"; }}
     >
@@ -767,8 +781,9 @@ export default function DecalZone({
           'left_calf_back', 'right_calf_back',
         ];
         const onDarkClothing = darkClothingZones.includes(zone.key);
+        const hoverColor = isRed ? '#f43f5e' : '#38bdf8';
         const borderColor = hovered
-          ? (onDarkClothing ? '#38bdf8' : '#38bdf8') // hover: always bright cyan
+          ? hoverColor // hover: theme-matched neon color
           : (onDarkClothing ? '#e2e8f0' : '#0f172a'); // rest: light on dark, dark on light
         const borderOpacity = hovered ? 1.0 : (onDarkClothing ? 0.85 : 0.90);
 

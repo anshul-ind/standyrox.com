@@ -7,6 +7,8 @@ import * as THREE from "three";
 
 import AvatarModel, { type ModelDimensions } from "./AvatarModel";
 import DecalZone from "./DecalZone";
+import { useTheme } from "@/lib/theme-context";
+import { playSoundFX } from "@/components/ui/AudioController";
 
 // Re-export ZoneData from ZoneRectangle so callers keep the same import path
 export type { ZoneData } from "./ZoneRectangle";
@@ -15,12 +17,12 @@ import type { ZoneData } from "./ZoneRectangle";
 import TunnelPortalBackground from "./TunnelPortalBackground";
 
 // ─── Platform constants ────────────────────────────────────────────────────────
-// The ArenaPlatform base disc center is at Y=0.05, half-height=0.05 → top at Y=0.10.
-// The glow disc sits at Y=0.102. We treat 0.102 as the "stand-on" surface.
 const PLATFORM_TOP_Y = 0.102;
 
-// ─── Arena Lighting (360° Studio & Backside Parity) ───────────────────────────
+// ─── Arena Lighting (Theme-reactive) ──────────────────────────────────────────
 function ArenaLighting() {
+  const { colors } = useTheme();
+
   return (
     <>
       {/* Front Key Light from upper front */}
@@ -52,20 +54,23 @@ function ArenaLighting() {
       {/* Room ambient light */}
       <ambientLight color="#0c1828" intensity={1.35} />
 
-      {/* 360° Rim Point Lights for equal contour separation from all angles */}
-      <pointLight position={[-3.2, 2.0, 0.2]} color="#00d4ff" intensity={1.8} distance={10} />
-      <pointLight position={[3.2, 2.0, 0.2]} color="#0099ff" intensity={1.8} distance={10} />
-      <pointLight position={[-2.4, 2.2, -2.4]} color="#00e5ff" intensity={1.5} distance={8} />
-      <pointLight position={[2.4, 2.2, -2.4]} color="#00a8e8" intensity={1.5} distance={8} />
+      {/* 360° Rim Point Lights (Theme-Reactive Neon) */}
+      <pointLight position={[-3.2, 2.0, 0.2]} color={colors.primaryHex} intensity={2.0} distance={10} />
+      <pointLight position={[3.2, 2.0, 0.2]} color={colors.primaryHex} intensity={2.0} distance={10} />
+      <pointLight position={[-2.4, 2.2, -2.4]} color={colors.primaryHex} intensity={1.6} distance={8} />
+      <pointLight position={[2.4, 2.2, -2.4]} color={colors.primaryHex} intensity={1.6} distance={8} />
 
       {/* Platform ground under-glow */}
-      <pointLight position={[0, 0.18, 0]} color="#00e5ff" intensity={0.5} distance={2.0} />
+      <pointLight position={[0, 0.18, 0]} color={colors.primaryHex} intensity={0.65} distance={2.0} />
     </>
   );
 }
 
-// ─── Sleek Platform Ring ──────────────────────────────────────────────────────
+// ─── Sleek Platform Ring (Theme-reactive) ─────────────────────────────────────
 function ArenaPlatform() {
+  const { theme, colors } = useTheme();
+  const isRed = theme === "red";
+
   const glowTex = useMemo(() => {
     if (typeof document === "undefined") return null;
     const canvas = document.createElement("canvas");
@@ -73,14 +78,20 @@ function ArenaPlatform() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, "rgba(0,210,255,0.45)");
-    grad.addColorStop(0.45, "rgba(0,140,240,0.20)");
-    grad.addColorStop(0.8, "rgba(0,60,180,0.06)");
+    if (isRed) {
+      grad.addColorStop(0, "rgba(255,42,85,0.45)");
+      grad.addColorStop(0.45, "rgba(220,20,60,0.20)");
+      grad.addColorStop(0.8, "rgba(180,10,30,0.06)");
+    } else {
+      grad.addColorStop(0, "rgba(0,210,255,0.45)");
+      grad.addColorStop(0.45, "rgba(0,140,240,0.20)");
+      grad.addColorStop(0.8, "rgba(0,60,180,0.06)");
+    }
     grad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 256, 256);
     return new THREE.CanvasTexture(canvas);
-  }, []);
+  }, [isRed]);
 
   return (
     <group>
@@ -96,10 +107,10 @@ function ArenaPlatform() {
           <meshBasicMaterial map={glowTex} transparent depthWrite={false} opacity={0.9} />
         </mesh>
       )}
-      {/* Outer bright cyan edge ring */}
+      {/* Outer bright edge ring (Theme Colored) */}
       <mesh position={[0, PLATFORM_TOP_Y, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[1.26, 0.014, 8, 64]} />
-        <meshBasicMaterial color="#00e5ff" />
+        <meshBasicMaterial color={colors.primaryHex} />
       </mesh>
     </group>
   );
@@ -111,43 +122,29 @@ function FloatingAvatarGroup({
   onSelectZone,
   showDebugLabel,
   onDimensionsMeasured,
+  onBaseYReady,
 }: {
   zones: ZoneData[];
   onSelectZone: (zoneId: string) => void;
   showDebugLabel?: boolean;
   onDimensionsMeasured?: (dims: ModelDimensions) => void;
+  onBaseYReady?: (baseY: number) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-
-  // ── Avatar scene ref for raycasting ──────────────────────────────────────
   const [avatarScene, setAvatarScene] = useState<THREE.Group | null>(null);
-
-  // ── Group world matrix — captured once after first frame so it's correct ─
-  // DecalZone needs this to convert SkinnedMesh world-space hits → local space.
   const [groupWorldMatrix, setGroupWorldMatrix] = useState<THREE.Matrix4 | null>(null);
   const matrixCapturedRef = useRef(false);
 
-  // ── Dimensions state (updated once real mesh is measured) ────────────────
   const [dimensions, setDimensions] = useState<ModelDimensions>({
     modelHeight: 1.8899,
     modelWidth:  1.827,
     modelDepth:  0.3848,
-    feetY:       -0.0149, // default — will be overwritten by real measurement
+    feetY:       -0.0149,
     centerX:     0,
   });
 
   const handleMeasured = useCallback(
     (dims: ModelDimensions) => {
-      const computedBaseY = PLATFORM_TOP_Y - dims.feetY;
-      console.log("=== Avatar Vertical Positioning ===");
-      console.log(
-        `  Bounding box  min.y=${dims.feetY.toFixed(4)}  max.y=${(dims.feetY + dims.modelHeight).toFixed(4)}`
-      );
-      console.log(`  BBox full: height=${dims.modelHeight.toFixed(4)} width=${dims.modelWidth.toFixed(4)} depth=${dims.modelDepth.toFixed(4)}`);
-      console.log(`  Platform top surface Y = ${PLATFORM_TOP_Y}`);
-      console.log(`  avatarGroup.position.y (grounded base) = ${computedBaseY.toFixed(4)}`);
-      console.log("===================================");
-
       setDimensions(dims);
       onDimensionsMeasured?.(dims);
     },
@@ -158,19 +155,16 @@ function FloatingAvatarGroup({
     setAvatarScene(scene);
   }, []);
 
-  // ── baseY: feet land exactly on platform top surface ─────────────────────
-  // Formula: PLATFORM_TOP_Y - feetY
-  //   feetY is the model-local Y of the lowest vertex (shoes_0: -0.0149)
-  //   Example: baseY = 0.102 - (-0.0149) = 0.1169
-  //   This places shoes exactly on top of PLATFORM_TOP_Y with 0 clipping.
   const baseY = PLATFORM_TOP_Y - dimensions.feetY;
+
+  useEffect(() => {
+    onBaseYReady?.(baseY);
+  }, [baseY, onBaseYReady]);
 
   useFrame(() => {
     if (groupRef.current) {
-      // Ground avatar firmly on platform surface — feet touching ring surface
       groupRef.current.position.y = baseY;
 
-      // Capture group world matrix once after avatarScene is set.
       if (avatarScene && !matrixCapturedRef.current) {
         matrixCapturedRef.current = true;
         groupRef.current.updateMatrixWorld(true);
@@ -185,7 +179,6 @@ function FloatingAvatarGroup({
         onDimensionsMeasured={handleMeasured}
         onSceneReady={handleSceneReady}
       />
-      {/* DecalZones — use real raycasting against the avatar mesh */}
       {zones.map((zone) => (
         <DecalZone
           key={zone.id}
@@ -200,60 +193,105 @@ function FloatingAvatarGroup({
   );
 }
 
-// ─── Scene Camera Controls ───────────────────────────────────────────────────
-function SceneCameraControls() {
+// ─── Scene Camera Controls (Horizontal-Only + Spot Focus Zoom) ────────────────
+function SceneCameraControls({
+  selectedZone,
+  baseY,
+}: {
+  selectedZone: ZoneData | null;
+  baseY: number;
+}) {
   const controlsRef = useRef<any>(null);
   const [autoRotate, setAutoRotate] = useState(true);
   const { size } = useThree();
 
-  // Responsive camera framing:
-  // Avatar height is ~1.89m, centered at Y ~0.95m.
-  // With vertical FOV = 40°, camera target at [0, 0.88, 0] and dist ~3.75m,
-  // the entire body from head to shoes on the platform is completely visible.
   const aspect = size.width / Math.max(1, size.height);
   const portraitScale = aspect < 0.85 ? Math.max(1.0, 0.85 / aspect) : 1.0;
   const defaultDist = +(3.75 * portraitScale).toFixed(2);
 
-  // Apply default camera distance and comfortable viewing angle
+  // Target values for smooth interpolation
+  const targetLookAt = useRef(new THREE.Vector3(0, 0.88, 0));
+  const targetCamPos = useRef(new THREE.Vector3(0, 1.05, defaultDist));
+  const isTransitioningRef = useRef(false);
+
+  // Default camera setup
   useEffect(() => {
-    if (controlsRef.current) {
+    if (controlsRef.current && !selectedZone) {
       const controls = controlsRef.current;
       controls.object.position.set(0, 1.05, defaultDist);
       controls.target.set(0, 0.88, 0);
       controls.update();
     }
-  }, [defaultDist]);
+  }, [defaultDist, selectedZone]);
 
+  // Update desired camera focus when selectedZone changes
   useEffect(() => {
-    (window as any).__setAutoRotate = (val: boolean) => setAutoRotate(val);
-    (window as any).__setCameraAngle = (preset: "front" | "side" | "back") => {
+    if (selectedZone) {
       setAutoRotate(false);
-      if (!controlsRef.current) return;
+      isTransitioningRef.current = true;
+      playSoundFX("focus");
+
+      // World position of the zone
+      const anchor = selectedZone.anchor;
+      const normal = selectedZone.normal ?? { x: 0, y: 0, z: 1 };
+      const normVec = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
+      if (normVec.lengthSq() < 1e-4) normVec.set(0, 0, 1);
+
+      // Target to look at: exact spot center in world space
+      const spotWorldPos = new THREE.Vector3(anchor.x, anchor.y + baseY, anchor.z);
+      targetLookAt.current.copy(spotWorldPos);
+
+      // Focus distance (comfortably zoomed in on the spot)
+      const focusDistance = 1.75;
+      const desiredCameraPos = spotWorldPos.clone().addScaledVector(normVec, focusDistance);
+
+      // Ensure camera maintains standard eye-level elevation relative to spot
+      desiredCameraPos.y = spotWorldPos.y + 0.05;
+      targetCamPos.current.copy(desiredCameraPos);
+    } else {
+      // Return to full body overview
+      isTransitioningRef.current = true;
+      targetLookAt.current.set(0, 0.88, 0);
+      targetCamPos.current.set(0, 1.05, defaultDist);
+    }
+  }, [selectedZone, baseY, defaultDist]);
+
+  // Smooth camera frame interpolation (damped lerp)
+  useFrame((_, delta) => {
+    if (controlsRef.current && isTransitioningRef.current) {
       const controls = controlsRef.current;
-      if (preset === "front") {
-        controls.object.position.set(0, 1.05, defaultDist);
-      } else if (preset === "side") {
-        controls.object.position.set(defaultDist, 1.05, 0.0);
-      } else if (preset === "back") {
-        controls.object.position.set(0, 1.05, -defaultDist);
-      }
-      controls.target.set(0, 0.88, 0);
+      const lerpFactor = Math.min(1, delta * 5.0);
+
+      controls.target.lerp(targetLookAt.current, lerpFactor);
+      controls.object.position.lerp(targetCamPos.current, lerpFactor);
       controls.update();
-    };
-  }, [defaultDist]);
+
+      // Check if settled
+      if (
+        controls.target.distanceTo(targetLookAt.current) < 0.005 &&
+        controls.object.position.distanceTo(targetCamPos.current) < 0.005
+      ) {
+        controls.target.copy(targetLookAt.current);
+        controls.object.position.copy(targetCamPos.current);
+        controls.update();
+        isTransitioningRef.current = false;
+      }
+    }
+  });
 
   return (
     <OrbitControls
       ref={controlsRef}
       target={[0, 0.88, 0]}
-      minPolarAngle={0.90}
-      maxPolarAngle={1.52}
-      minDistance={2.0}
-      maxDistance={5.2}
+      // Pure horizontal rotation: lock polar angle to horizontal plane
+      minPolarAngle={Math.PI / 2 - 0.04}
+      maxPolarAngle={Math.PI / 2 + 0.04}
+      minDistance={1.3}
+      maxDistance={4.8}
       enablePan={false}
       enableZoom={true}
-      autoRotate={autoRotate}
-      autoRotateSpeed={-1.0}
+      autoRotate={autoRotate && !selectedZone}
+      autoRotateSpeed={-0.9}
       dampingFactor={0.07}
       makeDefault
     />
@@ -264,14 +302,19 @@ function SceneCameraControls() {
 export default function AvatarScene({
   zones,
   onSelectZone,
+  selectedZone = null,
   showDebugLabel = false,
   onDimensionsMeasured,
 }: {
   zones: ZoneData[];
   onSelectZone: (zoneId: string) => void;
+  selectedZone?: ZoneData | null;
   showDebugLabel?: boolean;
   onDimensionsMeasured?: (dims: ModelDimensions) => void;
 }) {
+  const { colors } = useTheme();
+  const [baseY, setBaseY] = useState(0.1169);
+
   return (
     <Canvas
       shadows
@@ -280,7 +323,7 @@ export default function AvatarScene({
       className="h-full w-full"
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
     >
-      <color attach="background" args={["#040911"]} />
+      <color attach="background" args={[colors.bgDark]} />
 
       <TunnelPortalBackground />
       <ArenaLighting />
@@ -292,12 +335,11 @@ export default function AvatarScene({
           onSelectZone={onSelectZone}
           showDebugLabel={showDebugLabel}
           onDimensionsMeasured={onDimensionsMeasured}
+          onBaseYReady={setBaseY}
         />
       </Suspense>
 
-      <SceneCameraControls />
+      <SceneCameraControls selectedZone={selectedZone} baseY={baseY} />
     </Canvas>
   );
 }
-
-
