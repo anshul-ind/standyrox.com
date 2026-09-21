@@ -92,24 +92,6 @@ export default function AvatarModel({
     onDimensionsMeasured?.(dims);
   }, [model, onDimensionsMeasured]);
 
-  // Dispose clone on unmount to prevent GPU buffer leaks
-  useEffect(() => {
-    return () => {
-      model.traverse((obj) => {
-        const mesh = obj as unknown as {
-          geometry?: { dispose?: () => void };
-          material?: { dispose?: () => void } | Array<{ dispose?: () => void }>;
-        };
-        mesh.geometry?.dispose?.();
-        if (Array.isArray(mesh.material)) {
-          for (const m of mesh.material) m?.dispose?.();
-        } else {
-          mesh.material?.dispose?.();
-        }
-      });
-    };
-  }, [model]);
-
   return (
     <primitive
       object={model}

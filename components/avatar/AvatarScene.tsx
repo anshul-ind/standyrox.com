@@ -70,8 +70,8 @@ function ArenaLighting() {
       <pointLight position={[-2.4, 2.2, -2.4]} color={colors.primaryHex} intensity={1.6} distance={8} />
       <pointLight position={[2.4, 2.2, -2.4]} color={colors.primaryHex} intensity={1.6} distance={8} />
 
-      {/* Platform ground under-glow */}
-      <pointLight position={[0, 0.12, 0]} color={colors.primaryHex} intensity={0.8} distance={2.2} />
+      {/* Platform ground under-glow — positioned at podium base to avoid flaring at ankles */}
+      <pointLight position={[0, 0.015, 0]} color={colors.primaryHex} intensity={0.8} distance={2.2} />
     </>
   );
 }
@@ -110,9 +110,9 @@ function ArenaPlatform() {
         <cylinderGeometry args={[1.22, 1.25, 0.07, 64]} />
         <meshStandardMaterial color="#081424" metalness={0.7} roughness={0.3} />
       </mesh>
-      {/* Top radial glow disc — at Y=PLATFORM_TOP_Y=0.071 */}
+      {/* Top radial glow disc — at Y=PLATFORM_TOP_Y + 0.0005 */}
       {glowTex && (
-        <mesh position={[0, PLATFORM_TOP_Y + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, PLATFORM_TOP_Y + 0.0005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[1.21, 64]} />
           <meshBasicMaterial map={glowTex} transparent depthWrite={false} opacity={0.92} />
         </mesh>
@@ -165,7 +165,8 @@ function FloatingAvatarGroup({
     setAvatarScene(scene);
   }, []);
 
-  const baseY = PLATFORM_TOP_Y - dimensions.feetY;
+  // Floor-touch grounding: place sneaker soles precisely touching top of platform
+  const baseY = PLATFORM_TOP_Y - dimensions.feetY + 0.002;
 
   useEffect(() => {
     onBaseYReady?.(baseY);
