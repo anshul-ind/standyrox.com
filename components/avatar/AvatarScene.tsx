@@ -202,7 +202,6 @@ function SceneCameraControls({
   baseY: number;
 }) {
   const controlsRef = useRef<any>(null);
-  const [autoRotate, setAutoRotate] = useState(true);
   const { size } = useThree();
 
   const aspect = size.width / Math.max(1, size.height);
@@ -213,21 +212,22 @@ function SceneCameraControls({
   const targetLookAt = useRef(new THREE.Vector3(0, 0.88, 0));
   const targetCamPos = useRef(new THREE.Vector3(0, 1.05, defaultDist));
   const isTransitioningRef = useRef(false);
+  const isInitialMountRef = useRef(true);
 
-  // Default camera setup
+  // Default camera setup on initial load
   useEffect(() => {
-    if (controlsRef.current && !selectedZone) {
+    if (controlsRef.current && isInitialMountRef.current) {
+      isInitialMountRef.current = false;
       const controls = controlsRef.current;
       controls.object.position.set(0, 1.05, defaultDist);
       controls.target.set(0, 0.88, 0);
       controls.update();
     }
-  }, [defaultDist, selectedZone]);
+  }, [defaultDist]);
 
   // Update desired camera focus when selectedZone changes
   useEffect(() => {
     if (selectedZone) {
-      setAutoRotate(false);
       isTransitioningRef.current = true;
       playSoundFX("focus");
 
@@ -249,10 +249,30 @@ function SceneCameraControls({
       desiredCameraPos.y = spotWorldPos.y + 0.05;
       targetCamPos.current.copy(desiredCameraPos);
     } else {
-      // Return to full body overview
-      isTransitioningRef.current = true;
-      targetLookAt.current.set(0, 0.88, 0);
-      targetCamPos.current.set(0, 1.05, defaultDist);
+      // Returning to full body overview:
+      // Preserve current horizontal angle and smoothly zoom out along the current angle
+      if (controlsRef.current && !isInitialMountRef.current) {
+        const controls = controlsRef.current;
+        const currentCam = controls.object.position as THREE.Vector3;
+        const center = new THREE.Vector3(0, 0.88, 0);
+
+        // Direction vector in the horizontal X-Z plane
+        const dir = new THREE.Vector3(currentCam.x - center.x, 0, currentCam.z - center.z);
+        if (dir.lengthSq() < 1e-4) {
+          dir.set(0, 0, 1);
+        } else {
+          dir.normalize();
+        }
+
+        // Smooth target position keeping current viewing angle at full-body overview distance
+        targetLookAt.current.set(0, 0.88, 0);
+        targetCamPos.current.set(
+          dir.x * defaultDist,
+          1.05,
+          dir.z * defaultDist
+        );
+        isTransitioningRef.current = true;
+      }
     }
   }, [selectedZone, baseY, defaultDist]);
 
@@ -283,16 +303,22 @@ function SceneCameraControls({
     <OrbitControls
       ref={controlsRef}
       target={[0, 0.88, 0]}
-      // Pure horizontal rotation: lock polar angle to horizontal plane
-      minPolarAngle={Math.PI / 2 - 0.04}
-      maxPolarAngle={Math.PI / 2 + 0.04}
+      // Pure horizontal rotation in 2D plane: lock polar angle to horizontal
+      minPolarAngle={Math.PI / 2}
+      maxPolarAngle={Math.PI / 2}
+      minAzimuthAngle={-Infinity}
+      maxAzimuthAngle={Infinity}
       minDistance={1.3}
       maxDistance={4.8}
       enablePan={false}
       enableZoom={true}
-      autoRotate={autoRotate && !selectedZone}
-      autoRotateSpeed={-0.9}
+      autoRotate={!selectedZone}
+      autoRotateSpeed={-1.0}
       dampingFactor={0.07}
+      onStart={() => {
+        // User manual drag takes immediate priority over automatic transition
+        isTransitioningRef.current = false;
+      }}
       makeDefault
     />
   );
