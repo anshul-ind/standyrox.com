@@ -208,9 +208,9 @@ function SceneCameraControls({
   const portraitScale = aspect < 0.85 ? Math.max(1.0, 0.85 / aspect) : 1.0;
   const defaultDist = +(3.75 * portraitScale).toFixed(2);
 
-  // Target values for smooth interpolation
+  // Target values for smooth interpolation (Y = 0.88 aligns with horizontal eye level)
   const targetLookAt = useRef(new THREE.Vector3(0, 0.88, 0));
-  const targetCamPos = useRef(new THREE.Vector3(0, 1.05, defaultDist));
+  const targetCamPos = useRef(new THREE.Vector3(0, 0.88, defaultDist));
   const isTransitioningRef = useRef(false);
   const isInitialMountRef = useRef(true);
 
@@ -219,7 +219,7 @@ function SceneCameraControls({
     if (controlsRef.current && isInitialMountRef.current) {
       isInitialMountRef.current = false;
       const controls = controlsRef.current;
-      controls.object.position.set(0, 1.05, defaultDist);
+      controls.object.position.set(0, 0.88, defaultDist);
       controls.target.set(0, 0.88, 0);
       controls.update();
     }
@@ -268,7 +268,7 @@ function SceneCameraControls({
         targetLookAt.current.set(0, 0.88, 0);
         targetCamPos.current.set(
           dir.x * defaultDist,
-          1.05,
+          0.88,
           dir.z * defaultDist
         );
         isTransitioningRef.current = true;
@@ -276,10 +276,12 @@ function SceneCameraControls({
     }
   }, [selectedZone, baseY, defaultDist]);
 
-  // Smooth camera frame interpolation (damped lerp)
+  // Smooth camera frame interpolation (damped lerp) and per-frame auto-rotation update
   useFrame((_, delta) => {
-    if (controlsRef.current && isTransitioningRef.current) {
-      const controls = controlsRef.current;
+    if (!controlsRef.current) return;
+    const controls = controlsRef.current;
+
+    if (isTransitioningRef.current) {
       const lerpFactor = Math.min(1, delta * 5.0);
 
       controls.target.lerp(targetLookAt.current, lerpFactor);
@@ -296,6 +298,9 @@ function SceneCameraControls({
         controls.update();
         isTransitioningRef.current = false;
       }
+    } else {
+      // Continuous update ensures autoRotate spins automatically right on application load without clicks
+      controls.update();
     }
   });
 
@@ -313,7 +318,7 @@ function SceneCameraControls({
       enablePan={false}
       enableZoom={true}
       autoRotate={!selectedZone}
-      autoRotateSpeed={-1.0}
+      autoRotateSpeed={-1.2}
       dampingFactor={0.07}
       onStart={() => {
         // User manual drag takes immediate priority over automatic transition
@@ -345,7 +350,7 @@ export default function AvatarScene({
     <Canvas
       shadows
       dpr={[1, 2]}
-      camera={{ position: [0, 1.05, 3.75], fov: 40, near: 0.1, far: 120 }}
+      camera={{ position: [0, 0.88, 3.75], fov: 40, near: 0.1, far: 120 }}
       className="h-full w-full"
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
     >
