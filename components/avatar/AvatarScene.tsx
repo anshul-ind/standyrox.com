@@ -206,11 +206,11 @@ function SceneCameraControls({
 
   const aspect = size.width / Math.max(1, size.height);
   const portraitScale = aspect < 0.85 ? Math.max(1.0, 0.85 / aspect) : 1.0;
-  const defaultDist = +(3.75 * portraitScale).toFixed(2);
+  const defaultDist = +(3.95 * portraitScale).toFixed(2);
 
-  // Target values for smooth interpolation (Y = 0.88 aligns with horizontal eye level)
-  const targetLookAt = useRef(new THREE.Vector3(0, 0.88, 0));
-  const targetCamPos = useRef(new THREE.Vector3(0, 0.88, defaultDist));
+  // Target values for smooth interpolation (Y = 1.02 perfectly centers the full avatar body & platform)
+  const targetLookAt = useRef(new THREE.Vector3(0, 1.02, 0));
+  const targetCamPos = useRef(new THREE.Vector3(0, 1.02, defaultDist));
   const isTransitioningRef = useRef(false);
   const isInitialMountRef = useRef(true);
   const prevSelectedZoneIdRef = useRef<string | null>(null);
@@ -220,8 +220,8 @@ function SceneCameraControls({
     if (controlsRef.current && isInitialMountRef.current) {
       isInitialMountRef.current = false;
       const controls = controlsRef.current;
-      controls.object.position.set(0, 0.88, defaultDist);
-      controls.target.set(0, 0.88, 0);
+      controls.object.position.set(0, 1.02, defaultDist);
+      controls.target.set(0, 1.02, 0);
       controls.update();
     }
   }, [defaultDist]);
@@ -264,7 +264,7 @@ function SceneCameraControls({
       if (controlsRef.current) {
         const controls = controlsRef.current;
         const currentCam = controls.object.position as THREE.Vector3;
-        const center = new THREE.Vector3(0, 0.88, 0);
+        const center = new THREE.Vector3(0, 1.02, 0);
 
         // Direction vector in the horizontal X-Z plane
         const dir = new THREE.Vector3(currentCam.x - center.x, 0, currentCam.z - center.z);
@@ -275,10 +275,10 @@ function SceneCameraControls({
         }
 
         // Smooth target position keeping current viewing angle at full-body overview distance
-        targetLookAt.current.set(0, 0.88, 0);
+        targetLookAt.current.set(0, 1.02, 0);
         targetCamPos.current.set(
           dir.x * defaultDist,
-          0.88,
+          1.02,
           dir.z * defaultDist
         );
         isTransitioningRef.current = true;
@@ -317,7 +317,7 @@ function SceneCameraControls({
   return (
     <OrbitControls
       ref={controlsRef}
-      target={[0, 0.88, 0]}
+      target={[0, 1.02, 0]}
       // Pure horizontal rotation in 2D plane: lock polar angle to horizontal
       minPolarAngle={Math.PI / 2}
       maxPolarAngle={Math.PI / 2}
@@ -360,7 +360,7 @@ export default function AvatarScene({
     <Canvas
       shadows
       dpr={[1, 2]}
-      camera={{ position: [0, 0.88, 3.75], fov: 40, near: 0.1, far: 120 }}
+      camera={{ position: [0, 1.02, 3.95], fov: 40, near: 0.1, far: 120 }}
       className="h-full w-full"
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
     >
