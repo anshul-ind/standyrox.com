@@ -230,7 +230,7 @@ export default function LogoUploadForm({ zoneId }: { zoneId: string }) {
             variant="outline"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="border-white/10 text-zinc-300 hover:text-white"
+            className="border-black/10 text-zinc-900 hover:text-white"
           >
             {uploading
               ? "Uploading…"

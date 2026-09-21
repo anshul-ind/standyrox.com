@@ -146,10 +146,10 @@ function FloatingAvatarGroup({
   const matrixCapturedRef = useRef(false);
 
   const [dimensions, setDimensions] = useState<ModelDimensions>({
-    modelHeight: 1.8899,
+    modelHeight: 1.8896,
     modelWidth:  1.827,
     modelDepth:  0.3848,
-    feetY:       -0.0149,
+    feetY:       -0.0071,
     centerX:     0,
   });
 
