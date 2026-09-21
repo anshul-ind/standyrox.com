@@ -98,7 +98,7 @@ async function runTests() {
         if (!mesh.boundingSphere || mesh.boundingSphere.radius < 2.5) {
           mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 3.5);
         }
-        mesh.boundingBox = null;
+        (mesh as any).boundingBox = null;
         const hits = raycaster.intersectObject(mesh, false);
         if (hits.length > 0) {
           if (!bestHit || hits[0].distance < bestHit.distance) {
