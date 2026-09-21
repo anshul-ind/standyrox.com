@@ -213,6 +213,7 @@ function SceneCameraControls({
   const targetCamPos = useRef(new THREE.Vector3(0, 0.88, defaultDist));
   const isTransitioningRef = useRef(false);
   const isInitialMountRef = useRef(true);
+  const prevSelectedZoneIdRef = useRef<string | null>(null);
 
   // Default camera setup on initial load
   useEffect(() => {
@@ -225,8 +226,17 @@ function SceneCameraControls({
     }
   }, [defaultDist]);
 
-  // Update desired camera focus when selectedZone changes
+  // Update desired camera focus only when selectedZone actually changes
   useEffect(() => {
+    const prevId = prevSelectedZoneIdRef.current;
+    const currentId = selectedZone ? selectedZone.id : null;
+
+    if (currentId === prevId) {
+      // No change in selected zone (e.g. background baseY/logo updates), do not interrupt rotation
+      return;
+    }
+    prevSelectedZoneIdRef.current = currentId;
+
     if (selectedZone) {
       isTransitioningRef.current = true;
       playSoundFX("focus");
@@ -248,10 +258,10 @@ function SceneCameraControls({
       // Ensure camera maintains standard eye-level elevation relative to spot
       desiredCameraPos.y = spotWorldPos.y + 0.05;
       targetCamPos.current.copy(desiredCameraPos);
-    } else {
-      // Returning to full body overview:
+    } else if (prevId !== null) {
+      // Returning to full body overview ONLY if a zone was actively selected before:
       // Preserve current horizontal angle and smoothly zoom out along the current angle
-      if (controlsRef.current && !isInitialMountRef.current) {
+      if (controlsRef.current) {
         const controls = controlsRef.current;
         const currentCam = controls.object.position as THREE.Vector3;
         const center = new THREE.Vector3(0, 0.88, 0);
