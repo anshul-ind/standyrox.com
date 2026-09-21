@@ -43,7 +43,7 @@ export default function AvatarModel({
     if (sceneReadyFiredRef.current) return;
     sceneReadyFiredRef.current = true;
 
-    // Find all meshes
+    // Find all meshes and calibrate materials for proper diffuse and specular lighting
     const meshes: THREE.Mesh[] = [];
     model.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
@@ -52,6 +52,17 @@ export default function AvatarModel({
         if (!mesh.geometry.attributes.normal) {
           mesh.geometry.computeVertexNormals();
         }
+
+        // Prevent PBR metalness blackout (Avaturn GLTF defaults metalness to 1.0 on shoes/body)
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach((mat) => {
+          if (mat && "metalness" in mat) {
+            const stdMat = mat as THREE.MeshStandardMaterial;
+            stdMat.metalness = 0.05;
+            stdMat.roughness = 0.65;
+            stdMat.needsUpdate = true;
+          }
+        });
       }
     });
 

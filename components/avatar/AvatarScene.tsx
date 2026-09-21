@@ -17,7 +17,7 @@ import type { ZoneData } from "./ZoneRectangle";
 import TunnelPortalBackground from "./TunnelPortalBackground";
 
 // ─── Platform constants ────────────────────────────────────────────────────────
-const PLATFORM_TOP_Y = 0.102;
+const PLATFORM_TOP_Y = 0.07;
 
 // ─── Arena Lighting (Theme-reactive) ──────────────────────────────────────────
 function ArenaLighting() {
@@ -39,8 +39,11 @@ function ArenaLighting() {
         shadow-camera-top={5}
         shadow-camera-bottom={-2}
       />
-      {/* Front Lower Fill */}
-      <directionalLight position={[0, 0.2, 3.2]} intensity={0.65} color="#dbeafe" />
+      {/* Front Mid Fill */}
+      <directionalLight position={[0, 1.5, 3.2]} intensity={0.8} color="#dbeafe" />
+
+      {/* Front Lower Shoe / Floor Fill Light */}
+      <directionalLight position={[0, 0.45, 2.6]} intensity={1.5} color="#f0f9ff" />
 
       {/* Back Key Light — mirrored to provide equal lighting on rear view */}
       <directionalLight
@@ -48,8 +51,15 @@ function ArenaLighting() {
         intensity={2.4}
         color="#f0f7ff"
       />
-      {/* Back Lower Fill */}
-      <directionalLight position={[0, 0.2, -3.2]} intensity={0.65} color="#dbeafe" />
+      {/* Back Mid Fill */}
+      <directionalLight position={[0, 1.5, -3.2]} intensity={0.75} color="#dbeafe" />
+
+      {/* Back Lower Shoe / Floor Fill Light */}
+      <directionalLight position={[0, 0.45, -2.6]} intensity={1.3} color="#f0f9ff" />
+
+      {/* Dedicated Shoe / Foot Rim Point Lights */}
+      <pointLight position={[0, 0.28, 1.4]} color="#ffffff" intensity={1.4} distance={3.2} />
+      <pointLight position={[0, 0.28, -1.4]} color="#ffffff" intensity={1.2} distance={3.2} />
 
       {/* Room ambient light */}
       <ambientLight color="#0c1828" intensity={1.35} />
@@ -61,7 +71,7 @@ function ArenaLighting() {
       <pointLight position={[2.4, 2.2, -2.4]} color={colors.primaryHex} intensity={1.6} distance={8} />
 
       {/* Platform ground under-glow */}
-      <pointLight position={[0, 0.18, 0]} color={colors.primaryHex} intensity={0.65} distance={2.0} />
+      <pointLight position={[0, 0.12, 0]} color={colors.primaryHex} intensity={0.8} distance={2.2} />
     </>
   );
 }
@@ -95,21 +105,21 @@ function ArenaPlatform() {
 
   return (
     <group>
-      {/* Base disc — center at Y=0.05, top at Y=0.10, radius 1.25m */}
-      <mesh position={[0, 0.05, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[1.25, 1.28, 0.10, 64]} />
-        <meshStandardMaterial color="#050d18" metalness={0.92} roughness={0.15} />
+      {/* Base disc — center at Y=0.035, top at Y=0.07, radius 1.22m */}
+      <mesh position={[0, 0.035, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[1.22, 1.25, 0.07, 64]} />
+        <meshStandardMaterial color="#081424" metalness={0.7} roughness={0.3} />
       </mesh>
-      {/* Top radial glow disc — at Y=PLATFORM_TOP_Y=0.102 */}
+      {/* Top radial glow disc — at Y=PLATFORM_TOP_Y=0.071 */}
       {glowTex && (
-        <mesh position={[0, PLATFORM_TOP_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[1.24, 64]} />
-          <meshBasicMaterial map={glowTex} transparent depthWrite={false} opacity={0.9} />
+        <mesh position={[0, PLATFORM_TOP_Y + 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[1.21, 64]} />
+          <meshBasicMaterial map={glowTex} transparent depthWrite={false} opacity={0.92} />
         </mesh>
       )}
       {/* Outer bright edge ring (Theme Colored) */}
       <mesh position={[0, PLATFORM_TOP_Y, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[1.26, 0.014, 8, 64]} />
+        <torusGeometry args={[1.23, 0.012, 8, 64]} />
         <meshBasicMaterial color={colors.primaryHex} />
       </mesh>
     </group>
