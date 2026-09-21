@@ -18,6 +18,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Stand Out",
   description: "Reserve a position on collector-grade currency plates.",
+  icons: {
+    icon: "/svg/anshul_dummy.png",
+    shortcut: "/svg/anshul_dummy.png",
+    apple: "/svg/anshul_dummy.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

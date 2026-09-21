@@ -108,6 +108,15 @@ function HomeContent() {
         {/* Left Side: Brand Logo + Theme Toggle */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2.5">
+            <img
+              src="/svg/anshul_dummy.png"
+              alt="Avatar Logo"
+              className="h-6 w-6 rounded-full object-cover border"
+              style={{
+                borderColor: colors.primary,
+                boxShadow: `0 0 8px ${colors.primaryGlow}`,
+              }}
+            />
             <span
               className="text-[13px] font-bold tracking-[0.35em] uppercase transition-colors duration-500"
               style={{
