@@ -170,11 +170,18 @@ function FloatingAvatarGroup({
   });
 
   return (
-    <group ref={groupRef} position={[0, baseY, 0]}>
-      <AvatarModel
-        onDimensionsMeasured={handleMeasured}
-        onSceneReady={handleSceneReady}
-      />
+    <>
+      {/* Avatar body — positioned at baseY on the platform */}
+      <group ref={groupRef} position={[0, baseY, 0]}>
+        <AvatarModel
+          onDimensionsMeasured={handleMeasured}
+          onSceneReady={handleSceneReady}
+        />
+      </group>
+
+      {/* DecalZones are siblings at scene root — their geometry is baked in WORLD
+          space (using worldPoint from the SkinnedMesh raycast), so they must NOT
+          be children of the avatar group or they would be double-offset by baseY. */}
       {zones.map((zone) => (
         <DecalZone
           key={zone.id}
@@ -185,7 +192,7 @@ function FloatingAvatarGroup({
           showDebugLabel={showDebugLabel}
         />
       ))}
-    </group>
+    </>
   );
 }
 

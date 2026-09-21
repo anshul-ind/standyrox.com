@@ -496,19 +496,25 @@ export default function DecalZone({
     let hitNormal: THREE.Vector3 | null = null;
 
     if (hit) {
+      // Convert local-space face normal to world-space so the geometry orientation
+      // and border position are correct when rendered at scene root (no group transform).
+      const worldFaceNormal = hit.faceNormal.clone()
+        .transformDirection(groupWorldMatrix)
+        .normalize();
+
       // ── Exact log format as required ──
       console.log(
-        `[${zone.key}] hit at (${hit.point.x.toFixed(2)}, ${hit.point.y.toFixed(2)}, ${hit.point.z.toFixed(2)}),` +
-        ` normal (${hit.faceNormal.x.toFixed(2)}, ${hit.faceNormal.y.toFixed(2)}, ${hit.faceNormal.z.toFixed(2)}),` +
+        `[${zone.key}] hit at world (${hit.worldPoint.x.toFixed(2)}, ${hit.worldPoint.y.toFixed(2)}, ${hit.worldPoint.z.toFixed(2)}),` +
+        ` world normal (${worldFaceNormal.x.toFixed(2)}, ${worldFaceNormal.y.toFixed(2)}, ${worldFaceNormal.z.toFixed(2)}),` +
         ` distance from aim point: ${hit.distance.toFixed(2)}`
       );
 
-      // Orientation derived from the raycast face normal — correct per-zone surface direction.
-      const orientation = normalToEuler(hit.faceNormal);
+      // Orientation derived from world-space face normal — geometry is baked in world space
+      // and rendered at scene root, so the orientation must match world axes.
+      const orientation = normalToEuler(worldFaceNormal);
 
-      // Body-conforming curved rectangular plane at the hit point.
-      // Subdivided along X so it curves smoothly along the body's cylinder radius,
-      // keeping its edges flush against the avatar rather than floating in the air.
+      // Body-conforming curved rectangular plane at the WORLD hit point.
+      // Baked directly in world space so no group transform is inherited.
       const SURFACE_OFFSET = 0.003;
       const R = getZoneCurvatureRadius(zone.key);
 
@@ -528,34 +534,35 @@ export default function DecalZone({
         geo.computeVertexNormals();
 
         geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(orientation));
-        const offsetPt = hit.point.clone().addScaledVector(hit.faceNormal, SURFACE_OFFSET + extraNormalOffset);
+        // Use WORLD-space hit position — geometry is rendered at scene root, not inside
+        // the avatar group, so local-space coordinates would cause a double-offset.
+        const offsetPt = hit.worldPoint.clone().addScaledVector(worldFaceNormal, SURFACE_OFFSET + extraNormalOffset);
         geo.translate(offsetPt.x, offsetPt.y, offsetPt.z);
         return geo;
       };
 
-      // Both spot patch and brand logo use clean, body-curved rectangular planes
-      // attached flush to the mesh surface at the hit point.
       newGeo = buildCurvedPlane(1, 0);
       if (needsLogo) {
         newLogoGeo = buildCurvedPlane(LOGO_INSET, 0.001);
       }
 
-      hitPoint  = hit.point;
-      hitNormal = hit.faceNormal;
+      // Store world-space hit data — used for borderPos/borderRot at scene root.
+      hitPoint  = hit.worldPoint;
+      hitNormal = worldFaceNormal;
     } else {
       // ── Fallback: flat plane at estimated anchor ──
-      // Explicit format requested: [zone_key] RAYCAST MISS — reason: ...
       console.warn(
         `[${zone.key}] RAYCAST MISS — reason: no surface intersection found along ray from origin (${rayOrigin.toArray().map(v=>v.toFixed(2)).join(",")}) dir (${rayDir.toArray().map(v=>v.toFixed(2)).join(",")}) — using estimated fallback`
       );
 
-      // FIX: Derive rotation from the zone's DB normal, not a crude anchor.x heuristic.
-      // For arm zones with normal=(1,0,0) the plane must face outward, not forward.
-      // Push the anchor 3mm outward along the zone normal so it sits on (not in) the body.
+      // Convert local-space anchor + normal to WORLD space — fallback geometry is
+      // also rendered at scene root so it must be positioned in world space.
       const FALLBACK_OFFSET = 0.003;
-      const fallbackOrientation = normalToEuler(aimNorm);
-      const fallbackEuler = fallbackOrientation;
+      const worldAimPt   = aimPt.clone().applyMatrix4(groupWorldMatrix);
+      const worldAimNorm = aimNorm.clone().transformDirection(groupWorldMatrix).normalize();
+      const fallbackOrientation = normalToEuler(worldAimNorm);
       const R_fb = getZoneCurvatureRadius(zone.key);
+
       const buildFallbackPlane = (factor: number): THREE.BufferGeometry => {
         const widthVal = w * tier.scale * factor;
         const heightVal = h * tier.scale * factor;
@@ -570,8 +577,9 @@ export default function DecalZone({
         posAttr.needsUpdate = true;
         geo.computeVertexNormals();
 
-        geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(fallbackEuler));
-        const anchor = aimPt.clone().addScaledVector(aimNorm, FALLBACK_OFFSET);
+        geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(fallbackOrientation));
+        // World-space anchor position — no group transform will be inherited.
+        const anchor = worldAimPt.clone().addScaledVector(worldAimNorm, FALLBACK_OFFSET);
         geo.translate(anchor.x, anchor.y, anchor.z);
         return geo;
       };
@@ -688,9 +696,18 @@ export default function DecalZone({
   const isFallback = result.type === "fallback";
 
   // Dashed border position/orientation: flush on surface with 2mm normal offset.
-  // For fallback (no hit), use the anchor pushed outward along the zone normal.
+  // For fallback (no hit), use the world-space anchor pushed outward along the world normal.
+  // Both hit and fallback positions are already in world space since result stores worldPoint.
   const rawNormFB = zone.normal ?? { x: 0, y: 0, z: 1 };
-  const aimNormFB = new THREE.Vector3(rawNormFB.x, rawNormFB.y, rawNormFB.z).normalize();
+  const localNormFB = new THREE.Vector3(rawNormFB.x, rawNormFB.y, rawNormFB.z).normalize();
+  // Transform fallback anchor to world space so the border marker is correctly placed
+  // when rendering at scene root (no inherited group transform).
+  const fallbackWorldAnchor = groupWorldMatrix
+    ? new THREE.Vector3(zone.anchor.x, zone.anchor.y, zone.anchor.z).applyMatrix4(groupWorldMatrix)
+    : new THREE.Vector3(zone.anchor.x, zone.anchor.y, zone.anchor.z);
+  const fallbackWorldNorm = groupWorldMatrix
+    ? localNormFB.clone().transformDirection(groupWorldMatrix).normalize()
+    : localNormFB;
 
   const borderPos: [number, number, number] = result.hitPoint && result.hitNormal
     ? [
@@ -699,22 +716,22 @@ export default function DecalZone({
         result.hitPoint.z + result.hitNormal.z * 0.002,
       ]
     : [
-        zone.anchor.x + aimNormFB.x * 0.003,
-        zone.anchor.y + aimNormFB.y * 0.003,
-        zone.anchor.z + aimNormFB.z * 0.003,
+        fallbackWorldAnchor.x + fallbackWorldNorm.x * 0.003,
+        fallbackWorldAnchor.y + fallbackWorldNorm.y * 0.003,
+        fallbackWorldAnchor.z + fallbackWorldNorm.z * 0.003,
       ];
 
-  // Border rotation from hit normal (accurate) or zone DB normal (fallback).
+  // Border rotation from hit normal (accurate) or world-space zone DB normal (fallback).
   const borderRot: [number, number, number] = (() => {
-    const n = result.hitNormal ?? aimNormFB;
+    const n = result.hitNormal ?? fallbackWorldNorm;
     const e = normalToEuler(n);
     return [e.x, e.y, e.z];
   })();
 
-  // Debug label position: just above the hit/fallback point
+  // Debug label position: just above the hit/fallback point (both in world space)
   const labelPos: [number, number, number] = result.hitPoint
     ? [result.hitPoint.x, result.hitPoint.y + h * 0.5 + 0.05, result.hitPoint.z + 0.03]
-    : [zone.anchor.x, zone.anchor.y + h * 0.5 + 0.05, zone.anchor.z + 0.03];
+    : [fallbackWorldAnchor.x, fallbackWorldAnchor.y + h * 0.5 + 0.05, fallbackWorldAnchor.z + 0.03];
 
   return (
     <group
