@@ -33,14 +33,14 @@ export const ZONE_BONE_MAP: Record<string, string> = {
 };
 
 const ZONES = [
-  { key: "chest_center", anchorX: 0.0, anchorY: 1.157, anchorZ: 0.192, normalX: 0, normalY: 0, normalZ: 1 },
+  { key: "chest_center", anchorX: 0.0, anchorY: 1.25, anchorZ: 0.14, normalX: 0, normalY: 0, normalZ: 1 },
   { key: "left_shoulder", anchorX: 0.20, anchorY: 1.47, anchorZ: 0.045, normalX: 0.2, normalY: 0.0, normalZ: 0.98 },
   { key: "right_shoulder", anchorX: -0.20, anchorY: 1.47, anchorZ: 0.045, normalX: -0.2, normalY: 0.0, normalZ: 0.98 },
   { key: "back_upper", anchorX: 0.0, anchorY: 1.459, anchorZ: -0.192, normalX: 0, normalY: 0, normalZ: -1 },
-  { key: "left_bicep", anchorX: 0.35, anchorY: 1.50, anchorZ: 0.015, normalX: 1.0, normalY: 0, normalZ: 0 },
-  { key: "right_bicep", anchorX: -0.35, anchorY: 1.50, anchorZ: 0.015, normalX: -1.0, normalY: 0, normalZ: 0 },
-  { key: "left_forearm", anchorX: 0.52, anchorY: 1.50, anchorZ: -0.01, normalX: 1.0, normalY: 0.0, normalZ: 0.0 },
-  { key: "right_forearm", anchorX: -0.52, anchorY: 1.50, anchorZ: -0.01, normalX: -1.0, normalY: 0.0, normalZ: 0.0 },
+  { key: "left_bicep", anchorX: 0.35, anchorY: 1.50, anchorZ: 0.015, normalX: 0.2, normalY: 0.0, normalZ: 0.98 },
+  { key: "right_bicep", anchorX: -0.35, anchorY: 1.50, anchorZ: 0.015, normalX: -0.2, normalY: 0.0, normalZ: 0.98 },
+  { key: "left_forearm", anchorX: 0.58, anchorY: 1.50, anchorZ: 0.00, normalX: 0.2, normalY: 0.0, normalZ: 0.98 },
+  { key: "right_forearm", anchorX: -0.58, anchorY: 1.50, anchorZ: 0.00, normalX: -0.2, normalY: 0.0, normalZ: 0.98 },
   { key: "left_thigh_front", anchorX: 0.11, anchorY: 0.78, anchorZ: 0.09, normalX: 0.0, normalY: 0.0, normalZ: 1.0 },
   { key: "right_thigh_front", anchorX: -0.11, anchorY: 0.78, anchorZ: 0.09, normalX: 0.0, normalY: 0.0, normalZ: 1.0 },
   { key: "left_calf", anchorX: 0.11, anchorY: 0.38, anchorZ: 0.06, normalX: 0.05, normalY: 0.0, normalZ: 0.99 },

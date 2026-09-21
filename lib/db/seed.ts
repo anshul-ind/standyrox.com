@@ -19,8 +19,8 @@ const ZONE_DATA = [
     tier: "signature" as const,
     displayOrder: 1,
     anchorX: 0.0,
-    anchorY: 1.157,
-    anchorZ: 0.192,
+    anchorY: 1.25,
+    anchorZ: 0.14,
     normalX: 0,
     normalY: 0,
     normalZ: 1,
@@ -77,9 +77,9 @@ const ZONE_DATA = [
     anchorX: 0.35,
     anchorY: 1.50,
     anchorZ: 0.015,
-    normalX: 1.0,   // left arm faces outward (+X direction)
+    normalX: 0.2,
     normalY: 0.0,
-    normalZ: 0.0,
+    normalZ: 0.98,
     width: 0.10,   // narrow vertical (1:1.6)
     height: 0.16,
   },
@@ -91,9 +91,9 @@ const ZONE_DATA = [
     anchorX: -0.35,
     anchorY: 1.50,
     anchorZ: 0.015,
-    normalX: -1.0,  // right arm faces outward (-X direction)
+    normalX: -0.2,
     normalY: 0.0,
-    normalZ: 0.0,
+    normalZ: 0.98,
     width: 0.10,   // narrow vertical (1:1.6) — mirrors left
     height: 0.16,
   },
@@ -102,12 +102,12 @@ const ZONE_DATA = [
     label: "Left Forearm",
     tier: "standard" as const,
     displayOrder: 6,
-    anchorX: 0.52,
+    anchorX: 0.58,
     anchorY: 1.50,
-    anchorZ: -0.01,
-    normalX: 1.0,   // left forearm faces outward (+X direction)
+    anchorZ: 0.00,
+    normalX: 0.2,
     normalY: 0.0,
-    normalZ: 0.0,
+    normalZ: 0.98,
     width: 0.075,  // same orientation as bicep (1:1.6), smaller overall area
     height: 0.12,
   },
@@ -116,12 +116,12 @@ const ZONE_DATA = [
     label: "Right Forearm",
     tier: "standard" as const,
     displayOrder: 7,
-    anchorX: -0.52,
+    anchorX: -0.58,
     anchorY: 1.50,
-    anchorZ: -0.01,
-    normalX: -1.0,  // right forearm faces outward (-X direction)
+    anchorZ: 0.00,
+    normalX: -0.2,
     normalY: 0.0,
-    normalZ: 0.0,
+    normalZ: 0.98,
     width: 0.075,  // same orientation as bicep (1:1.6), smaller overall area — mirrors left
     height: 0.12,
   },
