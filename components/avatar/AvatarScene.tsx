@@ -118,14 +118,18 @@ function FloatingAvatarGroup({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const [avatarScene, setAvatarScene] = useState<THREE.Group | null>(null);
-  const [groupWorldMatrix, setGroupWorldMatrix] = useState<THREE.Matrix4 | null>(null);
-  const matrixCapturedRef = useRef(false);
-  // Counts frames after avatarScene becomes available.
-  // We wait ≥2 frames so position.y = baseY has been written AND fully propagated
-  // through the scene graph before we snapshot the world matrix.
-  // Without this guard, a cached-GLB refresh resolves synchronously and the matrix
-  // is captured at position.y = 0 (React default) → all zone decals shift downward.
-  const matrixSettleFramesRef = useRef(0);
+
+  // Deterministic ground elevation: single source of truth across all refreshes
+  const baseY = AVATAR_GROUND_BASE_Y;
+
+  // Compute groupWorldMatrix deterministically as a pure translation.
+  // The avatar group never rotates or scales, so its world matrix is completely
+  // constant. This eliminates any frame settle delay, race condition, or async
+  // state update across page loads, refreshes, and texture suspense events.
+  const groupWorldMatrix = useMemo(
+    () => new THREE.Matrix4().makeTranslation(0, baseY, 0),
+    [baseY]
+  );
 
   const handleMeasured = useCallback(
     (dims: ModelDimensions) => {
@@ -135,15 +139,8 @@ function FloatingAvatarGroup({
   );
 
   const handleSceneReady = useCallback((scene: THREE.Group) => {
-    // Reset settle counter whenever avatarScene is (re)assigned so a new GLB
-    // mount always re-captures a fresh, correct world matrix.
-    matrixCapturedRef.current = false;
-    matrixSettleFramesRef.current = 0;
     setAvatarScene(scene);
   }, []);
-
-  // Deterministic ground elevation: single source of truth across all refreshes
-  const baseY = AVATAR_GROUND_BASE_Y;
 
   useEffect(() => {
     onBaseYReady?.(baseY);
@@ -151,22 +148,7 @@ function FloatingAvatarGroup({
 
   useFrame(() => {
     if (!groupRef.current) return;
-
-    // Step 1: always write the correct Y first — before any matrix work.
     groupRef.current.position.y = baseY;
-
-    if (avatarScene && !matrixCapturedRef.current) {
-      matrixSettleFramesRef.current += 1;
-
-      // Step 2: wait 2 frames for the transform to fully propagate through the
-      // scene graph. On frame 1 the write above is new; by frame 2 the parent
-      // matrixWorld has been recalculated and the snapshot will be correct.
-      if (matrixSettleFramesRef.current >= 2) {
-        matrixCapturedRef.current = true;
-        groupRef.current.updateMatrixWorld(true);
-        setGroupWorldMatrix(groupRef.current.matrixWorld.clone());
-      }
-    }
   });
 
   return (

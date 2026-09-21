@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { DecalGeometry } from "three/examples/jsm/geometries/DecalGeometry.js";
@@ -9,6 +9,7 @@ import { formatUSDFromCents } from "@/lib/format";
 import type { ZoneData } from "./ZoneRectangle";
 import { useTheme } from "@/lib/theme-context";
 import { playSoundFX } from "@/components/ui/AudioController";
+import { AVATAR_GROUND_BASE_Y } from "./AvatarScene";
 
 // ─── Raycast opt-out ─────────────────────────────────────────────────────────
 //
@@ -372,8 +373,9 @@ function raycastLocalSpace(
     if (isSkinnedMesh) {
       const skinned = mesh as THREE.SkinnedMesh;
       skinned.skeleton?.update();
+      skinned.updateMatrixWorld(true);
       if (!skinned.boundingSphere || skinned.boundingSphere.radius < 2.5) {
-        skinned.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 3.5);
+        skinned.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.9 + AVATAR_GROUND_BASE_Y, 0), 3.5);
       }
       (skinned as unknown as { boundingBox: THREE.Box3 | null }).boundingBox = null;
 
@@ -460,6 +462,10 @@ export default function DecalZone({
   useEffect(() => {
     if (!avatarScene) return;
     if (!groupWorldMatrix) return; // wait until group has been mounted and matrix is ready
+
+    // Ensure avatarScene has its world matrix updated with the ground base elevation
+    avatarScene.position.set(0, AVATAR_GROUND_BASE_Y, 0);
+    avatarScene.updateMatrixWorld(true);
 
     // Collect all renderable meshes
     const meshes: THREE.Mesh[] = [];
@@ -768,12 +774,14 @@ export default function DecalZone({
 
       {/* Claimed spot: the purchased logo, projected onto the same surface as the patch */}
       {isOccupied && zone.placement?.brandLogoUrl && result.logoGeometry && (
-        <ZoneLogoDecal
-          url={zone.placement.brandLogoUrl}
-          geometry={result.logoGeometry}
-          zoneWidth={w * tier.scale * LOGO_INSET}
-          zoneHeight={h * tier.scale * LOGO_INSET}
-        />
+        <Suspense fallback={null}>
+          <ZoneLogoDecal
+            url={zone.placement.brandLogoUrl}
+            geometry={result.logoGeometry}
+            zoneWidth={w * tier.scale * LOGO_INSET}
+            zoneHeight={h * tier.scale * LOGO_INSET}
+          />
+        </Suspense>
       )}
 
       {/* Pulsing glow marker beacon at zone center — empty / unclaimed zones only */}
