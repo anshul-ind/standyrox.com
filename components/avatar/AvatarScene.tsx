@@ -42,8 +42,8 @@ function ArenaLighting() {
       {/* Front Mid Fill */}
       <directionalLight position={[0, 1.5, 3.2]} intensity={0.8} color="#dbeafe" />
 
-      {/* Front Lower Shoe / Floor Fill Light */}
-      <directionalLight position={[0, 0.45, 2.6]} intensity={1.5} color="#f0f9ff" />
+      {/* Front Lower Shoe / Floor Fill Light — softened to prevent specular blowout on floor */}
+      <directionalLight position={[0, 0.45, 2.6]} intensity={0.55} color="#f0f9ff" />
 
       {/* Back Key Light — mirrored to provide equal lighting on rear view */}
       <directionalLight
@@ -54,12 +54,12 @@ function ArenaLighting() {
       {/* Back Mid Fill */}
       <directionalLight position={[0, 1.5, -3.2]} intensity={0.75} color="#dbeafe" />
 
-      {/* Back Lower Shoe / Floor Fill Light */}
-      <directionalLight position={[0, 0.45, -2.6]} intensity={1.3} color="#f0f9ff" />
+      {/* Back Lower Shoe / Floor Fill Light — softened */}
+      <directionalLight position={[0, 0.45, -2.6]} intensity={0.50} color="#f0f9ff" />
 
-      {/* Dedicated Shoe / Foot Rim Point Lights */}
-      <pointLight position={[0, 0.28, 1.4]} color="#ffffff" intensity={1.4} distance={3.2} />
-      <pointLight position={[0, 0.28, -1.4]} color="#ffffff" intensity={1.2} distance={3.2} />
+      {/* Dedicated Shoe / Foot Rim Point Lights — balanced to define shoe contours */}
+      <pointLight position={[0, 0.28, 1.4]} color="#ffffff" intensity={0.65} distance={3.2} />
+      <pointLight position={[0, 0.28, -1.4]} color="#ffffff" intensity={0.55} distance={3.2} />
 
       {/* Room ambient light */}
       <ambientLight color="#0c1828" intensity={1.35} />
@@ -89,13 +89,13 @@ function ArenaPlatform() {
     if (!ctx) return null;
     const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
     if (isRed) {
-      grad.addColorStop(0, "rgba(255,42,85,0.45)");
-      grad.addColorStop(0.45, "rgba(220,20,60,0.20)");
-      grad.addColorStop(0.8, "rgba(180,10,30,0.06)");
+      grad.addColorStop(0, "rgba(255,42,85,0.30)");
+      grad.addColorStop(0.45, "rgba(220,20,60,0.12)");
+      grad.addColorStop(0.8, "rgba(180,10,30,0.03)");
     } else {
-      grad.addColorStop(0, "rgba(0,210,255,0.45)");
-      grad.addColorStop(0.45, "rgba(0,140,240,0.20)");
-      grad.addColorStop(0.8, "rgba(0,60,180,0.06)");
+      grad.addColorStop(0, "rgba(0,210,255,0.30)");
+      grad.addColorStop(0.45, "rgba(0,140,240,0.12)");
+      grad.addColorStop(0.8, "rgba(0,60,180,0.03)");
     }
     grad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = grad;
@@ -105,16 +105,16 @@ function ArenaPlatform() {
 
   return (
     <group>
-      {/* Base disc — center at Y=0.035, top at Y=0.07, radius 1.22m */}
+      {/* Base disc — center at Y=0.035, top at Y=0.07, radius 1.22m (Matte dark obsidian finish) */}
       <mesh position={[0, 0.035, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[1.22, 1.25, 0.07, 64]} />
-        <meshStandardMaterial color="#081424" metalness={0.7} roughness={0.3} />
+        <meshStandardMaterial color="#07111e" metalness={0.08} roughness={0.78} />
       </mesh>
-      {/* Top radial glow disc — at Y=PLATFORM_TOP_Y + 0.0005 */}
+      {/* Top radial glow disc — subtle cyber vignette at Y=PLATFORM_TOP_Y + 0.0005 */}
       {glowTex && (
         <mesh position={[0, PLATFORM_TOP_Y + 0.0005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[1.21, 64]} />
-          <meshBasicMaterial map={glowTex} transparent depthWrite={false} opacity={0.92} />
+          <meshBasicMaterial map={glowTex} transparent depthWrite={false} opacity={0.38} />
         </mesh>
       )}
       {/* Outer bright edge ring (Theme Colored) */}
