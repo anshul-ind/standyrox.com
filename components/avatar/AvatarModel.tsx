@@ -46,11 +46,15 @@ export default function AvatarModel({
     // Find all meshes and calibrate materials for proper diffuse and specular lighting
     const meshes: THREE.Mesh[] = [];
     model.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (mesh.isMesh && mesh.geometry) {
+      if ((obj as THREE.Mesh).isMesh) {
+        const mesh = obj as THREE.Mesh;
         meshes.push(mesh);
-        if (!mesh.geometry.attributes.normal) {
+        if (mesh.geometry && !mesh.geometry.attributes.normal) {
           mesh.geometry.computeVertexNormals();
+        }
+
+        if ((mesh as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) {
+          (mesh as THREE.SkinnedMesh).skeleton?.update();
         }
 
         // Prevent PBR metalness blackout (Avaturn GLTF defaults metalness to 1.0 on shoes/body)
@@ -66,6 +70,7 @@ export default function AvatarModel({
       }
     });
 
+    model.updateMatrixWorld(true);
     console.log("Avatar meshes found:", meshes.map(m => `${m.name} (${m.type})`));
     onSceneReady?.(model);
   }, [model, onSceneReady]);

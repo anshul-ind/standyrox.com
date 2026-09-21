@@ -14,7 +14,7 @@
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
     "verify:products": "tsx --env-file=.env.local scripts/verify-dodo-products.ts",
     "verify:credentials": "tsx --env-file=.env.local scripts/verify-dodo-credentials.ts",
-    "test": "tsx --env-file=.env.local tests/smoke.test.ts && tsx --env-file=.env.local tests/checkout-reservation.test.ts && tsx --env-file=.env.local tests/spot-product-mapping.test.ts && tsx --env-file=.env.local tests/dodo-credentials.test.ts && tsx --env-file=.env.local tests/fulfillment.test.ts"
+    "test": "tsx --env-file=.env.local tests/smoke.test.ts && tsx --env-file=.env.local tests/checkout-reservation.test.ts && tsx --env-file=.env.local tests/spot-product-mapping.test.ts && tsx --env-file=.env.local tests/dodo-credentials.test.ts && tsx --env-file=.env.local tests/fulfillment.test.ts && tsx --env-file=.env.local tests/spot-bone-attachment.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
