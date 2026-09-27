@@ -1,36 +1,426 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🧍 Standyrox
 
-## Getting Started
+### Turn a 3D human model into interactive advertising space.
 
-First, run the development server:
+**Standyrox** is an interactive 3D advertising platform where brands can purchase specific advertising spots on a virtual human model.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The platform divides the model into **16 advertising zones**, allowing brands to select a specific body location, purchase that placement, and display their brand directly on the 3D model.
+
+---
+
+## 🌐 Live Demo
+
+🚀 **[Visit Standyrox](https://standyrox.anshulx.me/)**
+
+---
+
+## 🎬 Product Demo
+
+### Watch the Standyrox experience
+
+<a href="./public/assets/Stand_Out_demo.mp4">▶️ Watch Standyrox Demo Video</a>
+
+> The demo showcases the interactive 3D model, advertising spots, camera interaction, brand placement and the overall product experience.
+
+---
+
+## 📸 Screenshots
+
+### 🧍 Interactive 3D Advertising Model
+
+The main experience allows users to explore the 3D human model and interact with available advertising zones.
+
+![Standyrox 3D Model](./public/assets/image-1.png)
+
+---
+
+### 🏷️ Brand Advertising Spot
+
+Each advertising zone can display a brand and campaign information after the placement has been purchased.
+
+![Standyrox Brand Spot](./public/assets/image-2.png)
+
+---
+
+### 🎨 Interactive 3D Environment
+
+The application uses a futuristic 3D environment with interactive advertising zones and dynamic visual themes.
+
+![Standyrox Interactive Environment](./public/assets/image-3.png)
+
+---
+
+## 💡 What is Standyrox?
+
+Traditional advertising is usually placed on:
+
+- Websites
+- Mobile applications
+- Billboards
+- Social media
+- Videos
+
+Standyrox explores a different concept:
+
+> **What if a 3D human body could become advertising space?**
+
+The platform provides **16 purchasable advertising zones** across the virtual model.
+
+Brands can select a specific location and purchase that placement.
+
+Once the purchase is completed, the brand can be displayed on the selected location of the 3D model.
+
+---
+
+## ✨ Core Features
+
+- 🧍 Interactive 3D human model
+- 🎯 16 advertising zones
+- 🏷️ Brand logo placement
+- 💳 Online payment integration
+- 📍 Location-based advertising spots
+- 🎨 Futuristic interactive UI
+- 🖱️ Clickable 3D hotspots
+- 🔄 Dynamic brand placement
+- 📊 Campaign information
+- 📱 Responsive web experience
+- 🌐 Vercel deployment
+
+---
+
+## 🧩 How It Works
+
+```text
+                 STANDYROX
+
+                     │
+                     ▼
+              Explore 3D Model
+                     │
+                     ▼
+              Select Body Spot
+                     │
+                     ▼
+             View Spot Details
+                     │
+                     ▼
+              Select / Upload Brand
+                     │
+                     ▼
+                  Checkout
+                     │
+                     ▼
+              Dodo Payments
+                     │
+                     ▼
+             Payment Confirmation
+                     │
+                     ▼
+             Spot Becomes Active
+                     │
+                     ▼
+          Brand Appears on 3D Model
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🧍 16 Advertising Zones
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The virtual human model is divided into **16 individual advertising placements**.
 
-## Learn More
+Each advertising spot can represent its own advertising inventory with:
 
-To learn more about Next.js, take a look at the following resources:
+```text
+Spot
+ ├── Spot ID
+ ├── Body Location
+ ├── Price
+ ├── Payment Product
+ ├── Brand
+ ├── Logo
+ └── Campaign Status
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This allows each location on the model to function as an individual advertising product.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 💳 Payment Flow
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Standyrox integrates **Dodo Payments** for the advertising checkout flow.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The selected advertising spot is validated before creating the payment checkout.
+
+```text
+User selects spot
+       │
+       ▼
+Backend validates spot
+       │
+       ▼
+Spot → Payment Product
+       │
+       ▼
+Dodo Payments Checkout
+       │
+       ▼
+Payment completed
+       │
+       ▼
+Webhook confirmation
+       │
+       ▼
+Advertising spot activated
+       │
+       ▼
+Brand displayed on model
+```
+
+The application keeps the advertising spot configuration on the server instead of relying on client-provided pricing.
+
+---
+
+## 🧠 Architecture
+
+Standyrox is built as a modern Next.js application with an interactive Three.js-based 3D experience.
+
+```text
+┌──────────────────────────────────┐
+│            Next.js               │
+│                                  │
+│       React + TypeScript         │
+│                │                 │
+│                ▼                 │
+│        Three.js / 3D             │
+│                │                 │
+│                ▼                 │
+│       Interactive 3D Model       │
+│                │                 │
+│                ▼                 │
+│       Advertising Hotspots       │
+└────────────────┬─────────────────┘
+                 │
+                 ▼
+┌──────────────────────────────────┐
+│          Application API         │
+│                                  │
+│     Spot / Product Validation    │
+│                │                 │
+│                ▼                 │
+│       Checkout Creation          │
+└────────────────┬─────────────────┘
+                 │
+                 ▼
+┌──────────────────────────────────┐
+│          Dodo Payments           │
+│                                  │
+│             Checkout             │
+│                │                 │
+│                ▼                 │
+│             Webhook              │
+│                │                 │
+│                ▼                 │
+│       Payment Confirmation       │
+└──────────────────────────────────┘
+                 │
+                 ▼
+┌──────────────────────────────────┐
+│             Vercel               │
+│                                  │
+│        Production Deployment     │
+└──────────────────────────────────┘
+```
+
+---
+
+## 🎨 3D Experience
+
+The 3D model was created and prepared using **Blender** and integrated into the web experience using **Three.js**.
+
+Blender is used for the 3D asset/model workflow, while Three.js handles the interactive 3D experience in the browser.
+
+Users can:
+
+- Rotate the model
+- Zoom into the model
+- Explore different angles
+- Click advertising spots
+- Focus the camera on selected spots
+- View brand/campaign information
+- Interact with purchased placements
+
+---
+
+## 🛠️ Technology Stack
+
+### Frontend
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+
+### 3D
+
+- Three.js
+- Blender
+- GLB / GLTF 3D assets
+
+### Payments
+
+- Dodo Payments
+
+### Deployment
+
+- Vercel
+
+---
+
+## 📁 Project Structure
+
+```text
+stand-out/
+│
+├── app/
+│   └── Next.js application
+│
+├── components/
+│   └── UI and 3D components
+│
+├── db/
+│   └── Database-related code
+│
+├── lib/
+│   └── Application utilities and services
+│
+├── public/
+│   ├── assets/
+│   │   ├── image-1.png
+│   │   ├── image-2.png
+│   │   ├── image-3.png
+│   │   └── Stand_Out_demo.mp4
+│   │
+│   └── models/
+│       ├── avatar-v1.glb
+│       └── avatar-v11.glb
+│
+└── README.md
+```
+
+---
+
+## 🔐 Payment & Product Validation
+
+The application follows a server-controlled payment flow.
+
+The browser provides the selected advertising spot rather than trusting the client to determine the final product configuration.
+
+```text
+Client
+  │
+  │ spotId
+  ▼
+Server
+  │
+  ├── Validate spot
+  │
+  ├── Resolve payment product
+  │
+  ├── Create checkout
+  │
+  ▼
+Dodo Payments
+  │
+  ▼
+Webhook
+  │
+  ▼
+Confirm payment
+  │
+  ▼
+Activate spot
+```
+
+This keeps the relationship between the advertising spot, price and payment product controlled by the application.
+
+---
+
+## 🎯 Product Concept
+
+Standyrox combines several different areas of development into one product:
+
+```text
+              STANDYROX
+                  │
+       ┌──────────┼──────────┐
+       ▼          ▼          ▼
+      3D        Web       Payments
+       │          │          │
+       ▼          ▼          ▼
+   Blender    Next.js    Dodo Payments
+       │          │          │
+       └──────────┼──────────┘
+                  ▼
+        Interactive Advertising
+```
+
+The goal is to experiment with a new form of digital advertising where brands can purchase and occupy specific locations on an interactive 3D human model.
+
+---
+
+## 📚 What I Learned
+
+While building Standyrox, I explored:
+
+- Integrating 3D models into Next.js
+- Three.js camera controls
+- Interactive 3D hotspots
+- 3D model positioning
+- Mapping UI interactions to 3D locations
+- Brand placement
+- Payment integration
+- Payment webhook handling
+- Server-side product validation
+- Vercel deployment
+- Building a product-oriented interface around a 3D experience
+
+---
+
+## 🚀 Deployment
+
+The production application is deployed on Vercel.
+
+### Live Application
+
+**[https://standyrox.anshulx.me/](https://standyrox.anshulx.me/)**
+
+---
+
+## 🔮 Future Ideas
+
+- 🏆 Brand leaderboard
+- 📊 Campaign analytics
+- 👀 Impression tracking
+- 🏢 Brand dashboard
+- 📅 Campaign scheduling
+- 📈 Real-time campaign statistics
+- 🤖 AI-assisted advertising placement
+- 🧍 Multiple 3D models
+- 🌐 Expanded advertising inventory
+
+---
+
+## 👨‍💻 Author
+
+### Anshul Chouhan
+
+Frontend Developer
+
+- GitHub: [@anshul-ind](https://github.com/anshul-ind)
+- LinkedIn: [Anshul Chouhan](https://linkedin.com/in/anshul5176)
+
+---
+
+## 📄 License
+
+MIT License
