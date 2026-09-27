@@ -18,7 +18,7 @@ The platform divides the model into **16 advertising zones**, allowing brands to
 
 ### Watch the Standyrox experience
 
-<a href="./public/assets/Stand_Out_demo.mp4">▶️ Watch Standyrox Demo Video</a>
+▶️ Watch Standyrox Demo Video:LINK --> https://drive.google.com/file/d/1dhBMhAqPUijWYbi6YN1HBq4c7PjIMt9U/view?usp=drive_link
 
 > The demo showcases the interactive 3D model, advertising spots, camera interaction, brand placement and the overall product experience.
 
